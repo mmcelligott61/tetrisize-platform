@@ -1,0 +1,162 @@
+{
+  "typeId": "shuttle",
+  "name": "Shuttle Car (low bed + end trunks)",
+  "category": "vehicle",
+  "class": "shuttle",
+  "status": "Form per Mike 2026-06-05: low nested IDBM bed between two tall end trunks (set back by trunk.gap) + centre Lidar both ends; widest part = the IDBM ends. Cosmetic dims assumed.",
+  "params": [
+    {
+      "key": "bed.laneCount",
+      "type": "number",
+      "default": 6,
+      "min": 1,
+      "units": "count",
+      "desc": "IDBMs side-by-side along travel (X)."
+    },
+    {
+      "key": "bed.idbmLength",
+      "type": "number",
+      "default": 2500,
+      "units": "mm",
+      "desc": "IDBM length = bed depth (local Y); the IDBM ends are the widest part."
+    },
+    {
+      "key": "chassis.height",
+      "type": "number",
+      "default": 300,
+      "min": 125,
+      "units": "mm",
+      "desc": "Deck (IDBM body-rest) height. IDBM nests low so IDBM-top = chassis.height + 85; min 125 -> 210 mm."
+    },
+    {
+      "key": "trunk.height",
+      "type": "number",
+      "default": 1000,
+      "units": "mm",
+      "assumption": true,
+      "desc": "Tall end-structure height (batteries/motors/controls)."
+    },
+    {
+      "key": "trunk.depth",
+      "type": "number",
+      "default": 600,
+      "units": "mm",
+      "assumption": true,
+      "desc": "How far each trunk extends in X."
+    },
+    {
+      "key": "trunk.gap",
+      "type": "number",
+      "default": 150,
+      "units": "mm",
+      "assumption": true,
+      "desc": "Clearance gap between the last IDBM and the trunk (so the trunk doesn't interfere with products entering/exiting)."
+    },
+    {
+      "key": "trunk.widthInset",
+      "type": "number",
+      "default": 200,
+      "units": "mm",
+      "assumption": true,
+      "desc": "Trunk Y-width = idbmLength - this (slightly SHORTER than the IDBM ends)."
+    },
+    {
+      "key": "clearance.berth",
+      "type": "number",
+      "default": 150,
+      "units": "mm",
+      "assumption": true,
+      "desc": "Laneway clearance berth for the Configurator footprint (NOT drawn in the Viewer)."
+    }
+  ],
+  "bed": {
+    "laneCount": 6,
+    "idbmLength": 2500,
+    "idbmWidth": 300,
+    "idbmType": "idbm",
+    "mount": "nested low between end trunks",
+    "note": "bed = laneCount IDBM instances; obey normal IDBM op rules."
+  },
+  "kinematics": {
+    "drivableAxes": "X",
+    "note": "Rail-bound; linear travel along X on a single central floor rail. Symmetric (a trunk + Lidar at each end) — travels both ways. Belt deck conveys ACROSS travel (Y)."
+  },
+  "derived": {
+    "bed.width": "laneCount x 300",
+    "bed.depth": "idbmLength",
+    "idbm.top": "chassis.height + 85 (min 210 mm at chassis.height 125)",
+    "vehicle.length(X)": "laneCount x 300 + 2 x (trunk.gap + trunk.depth)",
+    "vehicle.width(Y)": "idbmLength (IDBM ends; trunks are idbmLength - trunk.widthInset)",
+    "vehicle.height(Z)": "max(trunk.height, chassis.height + 85)",
+    "laneway": "Configurator-only: footprint swept along travel (X) +/- clearance.berth (see laneway2D). NOT rendered in the Viewer."
+  },
+  "geometry": {
+    "note": "Low nested IDBM bed between two tall end trunks. Drawn far-trunk -> bed -> near-trunk so nothing dark overpaints the IDBMs.",
+    "frame": "Datum = chassis pose {position,yaw}. local X = travel/side-by-side; local Y = IDBM length; Z up.",
+    "deck": "Low slab from trunk to trunk (X = laneCount x 300 + 2 x trunk.gap ; Y = IDBM body length) at chassis.height; IDBM bodies rest on it, end housings overhang in Y.",
+    "trunks": "two boxes set back by trunk.gap: inner face at laneCount x 300/2 + trunk.gap; each trunk.depth (X) x (idbmLength - trunk.widthInset) (Y) x trunk.height tall.",
+    "lidar": "a sensor on the OUTER (+/-X) face centre of each trunk (both ends).",
+    "bed": "laneCount IDBMs at 300 mm pitch along X; each idbmLength along Y; nested low (IDBM-top = chassis.height + 85).",
+    "rule": "Widest part (Y) = the IDBM ends. The cart may be longer in X than the outer IDBMs. IDBM module FIXED (300 wide, 200 high, body underside 115)."
+  },
+  "connectionPoints": [
+    {
+      "id": "bed_infeed",
+      "face": "endA",
+      "offset": [
+        0,
+        -1,
+        0
+      ],
+      "kind": "end_to_end",
+      "desc": "-Y bed edge: lane endA's meet a storage lane for transfer."
+    },
+    {
+      "id": "bed_outfeed",
+      "face": "endB",
+      "offset": [
+        0,
+        1,
+        0
+      ],
+      "kind": "end_to_end",
+      "desc": "+Y bed edge: lane endB's meet a storage lane for transfer."
+    },
+    {
+      "id": "base_datum",
+      "face": "base",
+      "offset": [
+        0,
+        0,
+        0
+      ],
+      "kind": "pose",
+      "desc": "Shuttle datum (chassis pose); rides a single central rail along X."
+    }
+  ],
+  "datum": {
+    "kind": "pose",
+    "form": "{ position:[x,y,z] mm, yaw rad }"
+  },
+  "meta": {
+    "author": "component-authoring session (parallel)",
+    "form": "low nested IDBM bed between two tall end trunks (set back by trunk.gap) + centre Lidar each end",
+    "colours": "Trunks/deck dark + Safety-Orange cap; Lidar grey housing + teal window; IDBMs unchanged.",
+    "references": [
+      "Mike's notes 2026-06-05 (end trunks, gap, Lidar, widest = IDBM ends)",
+      "coordinate_frame_and_component_schema_v0.1.md §2 (vehicle/shuttle)",
+      "viewer_3d.html drawIdbm()"
+    ],
+    "remainingAssumptions": "trunk.height/depth/gap/widthInset, chassis.height, drive/sensor detail. Appearance to be revisited."
+  },
+  "defaults": {
+    "bed.laneCount": 6,
+    "bed.idbmLength": 2500,
+    "chassis.height": 300,
+    "trunk.height": 1000,
+    "trunk.depth": 600,
+    "trunk.gap": 150,
+    "trunk.widthInset": 200,
+    "clearance.berth": 150
+  }
+}

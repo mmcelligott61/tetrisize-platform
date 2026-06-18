@@ -1,0 +1,26 @@
+{
+  "typeId": "zone",
+  "name": "Zone (floor area)",
+  "category": "zone",
+  "status": "DRAFT - rectangle form; schema section 2 supports a full polygon. Placeholder size.",
+  "params": [
+    { "key": "zone.width", "type": "number", "default": 6000, "units": "mm", "desc": "Zone width (local X)." },
+    { "key": "zone.depth", "type": "number", "default": 4000, "units": "mm", "desc": "Zone depth (local Y)." },
+    { "key": "zone.kind",  "type": "enum", "default": "agv_drivable", "options": ["agv_drivable", "keepout", "storage", "staging"], "desc": "Zone classification (schema section 2)." }
+  ],
+  "geometry": {
+    "note": "Flat floor patch (rectangle = polygon shortcut). Translucent fill + coloured outline by kind.",
+    "frame": "Datum = pose {position,yaw} at centre; local X = width, Y = depth, on the floor (Z~0).",
+    "polygon": "schema section 2 Zone.polygon[] - this rectangle is the simple case; full polygon support is a later extension.",
+    "colours": "agv_drivable=green, keepout=red, storage=blue, staging=amber (translucent fill + outline)."
+  },
+  "connectionPoints": [],
+  "datum": { "kind": "pose", "form": "{ position:[x,y,z] mm, yaw rad }" },
+  "defaults": { "zone.width": 6000, "zone.depth": 4000, "zone.kind": "agv_drivable" },
+  "meta": {
+    "author": "component-authoring session (parallel)",
+    "kinds": ["agv_drivable", "keepout", "storage", "staging"],
+    "references": ["coordinate_frame_and_component_schema_v0.1.md section 2 (Zone)"],
+    "remainingAssumptions": "rectangle vs arbitrary polygon; default size; colour scheme."
+  }
+}

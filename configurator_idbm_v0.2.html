@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tetrisize Platform — Configurator</title>
+<link rel="stylesheet" href="ui_kit.css">
+<script>window.TZ_SCREEN='configurator';</script>
+<script src="ui_kit.js"></script>
+<style>
+  :root{--bg1:var(--tz-bg1,#eef2f7);--bg2:var(--tz-bg2,#dbe4f0);--ink:var(--tz-ink,#1f2a37);--muted:var(--tz-muted,#5b6b7c);--panel:var(--tz-panel,rgba(255,255,255,0.93));
+    --brd:var(--tz-brd,rgba(20,40,70,0.12));--accent:var(--tz-accent,#2b6cff);--good:#16a34a;--shadow:var(--tz-shadow,0 8px 30px rgba(20,40,70,0.12))}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink)}
+  #app{position:fixed;inset:0;background:radial-gradient(130% 130% at 50% 0%,var(--bg1),var(--bg2))}
+  #scene{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;display:block}
+  .panel{position:absolute;background:var(--panel);backdrop-filter:blur(14px) saturate(170%);-webkit-backdrop-filter:blur(14px) saturate(170%);   /* liquid glass */
+    border:1px solid var(--brd);border-radius:12px;box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,0.35);padding:11px 12px;user-select:none}
+  #title{top:14px;left:14px;max-width:250px}
+  #title h1{margin:0;font-size:15px} #title h1 b{color:var(--accent)}
+  #title p{margin:3px 0 0;font-size:11px;color:var(--muted);line-height:1.4}
+  #bar{top:14px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:74vw;padding:8px 10px}
+  .grp{display:flex;gap:5px;align-items:center}
+  .gl{font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin-right:1px}
+  button.ui{cursor:pointer;border:1px solid var(--brd);background:var(--tz-panel-solid,#fff);color:var(--ink);font-size:12px;font-weight:600;
+    padding:6px 9px;border-radius:8px;transition:.12s;white-space:nowrap}
+  button.ui:hover{border-color:var(--accent);color:var(--accent)}
+  button.ui.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .sep{width:1px;height:22px;background:var(--brd);margin:0 1px}
+  input.num{width:52px;border:1px solid var(--brd);border-radius:7px;padding:5px 6px;font:inherit;font-size:12px;text-align:right}
+  .quad{display:inline-grid;grid-template-columns:17px 17px;grid-template-rows:14px 14px;gap:1px;margin:0 2px;vertical-align:middle}
+  .quad button{cursor:pointer;border:1px solid var(--brd);background:var(--tz-panel-solid,#fff);color:var(--muted);
+    font-size:9.5px;line-height:1;padding:0;border-radius:4px}
+  .quad button:hover{border-color:var(--accent);color:var(--accent)}
+  .quad button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  input.num.w{width:66px}
+  select.num{border:1px solid var(--brd);border-radius:7px;padding:5px 4px;font:inherit;font-size:12px}
+  #levels{left:14px;top:108px;width:182px}
+  #levels .lbl,#props .lbl{font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}
+  .chip{cursor:pointer;border:1px solid var(--brd);background:#fff;border-radius:7px;padding:4px 8px;font-size:11.5px;font-weight:600}
+  .chip.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .zrow{display:flex;gap:5px;align-items:center;margin-top:4px}
+  .toggle{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:8px;cursor:pointer}
+  #props{right:14px;top:14px;width:226px}
+  #props .empty{font-size:12px;color:var(--muted)}
+  .prow{display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px solid rgba(20,40,70,.07)}
+  .prow:first-of-type{border-top:none} .prow span:first-child{color:var(--muted)} .prow b{font-variant-numeric:tabular-nums}
+  .pill{font-size:10px;font-weight:700;color:var(--good);background:rgba(22,163,74,.12);padding:2px 7px;border-radius:999px}
+  #status{bottom:14px;left:14px;font-size:12px;color:#33414f;display:flex;gap:13px} #status b{color:var(--ink)}
+  #hint{bottom:14px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--muted);border-radius:999px;padding:6px 13px}
+  #hint b{color:var(--ink)}
+  #toast{top:74px;left:50%;transform:translateX(-50%);background:#1f2a37;color:#fff;font-size:12px;padding:7px 14px;border-radius:9px;opacity:0;transition:.2s;pointer-events:none;box-shadow:var(--shadow)}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="scene"></canvas>
+
+  <div class="panel" id="title"><h1>TETRISIZE <b>IDBM Configurator</b></h1>
+    <p>v0.2 · array · duplicate+gap · marquee · Z-levels. Exports v0.2 schema.</p></div>
+
+  <div class="panel" id="bar">
+    <div class="grp"><button class="ui primary" id="add">+ IDBM</button><button class="ui" id="rot">Rotate</button></div>
+    <span class="sep"></span>
+    <div class="grp"><span class="gl">Len</span><input class="num w" id="lenIn" type="number" value="6000"><button class="ui" id="setlen">Set</button></div>
+    <span class="sep"></span>
+    <div class="grp"><span class="gl">Array</span><input class="num" id="acrossIn" type="number" value="10" title="side-by-side (across)">×<input class="num" id="alongIn" type="number" value="2" title="end-to-end (along)"><span class="quad" id="arrQuad" title="Which way the array grows from the selected IDBM"><button data-q="-1,1">↖</button><button data-q="1,1" class="on">↗</button><button data-q="-1,-1">↙</button><button data-q="1,-1">↘</button></span><button class="ui" id="arr">Build</button></div>
+    <span class="sep"></span>
+    <div class="grp"><span class="gl">Dup</span>
+      <select class="num" id="dirSel"><option value="R">→</option><option value="L">←</option><option value="U">↑</option><option value="D">↓</option></select>
+      <span class="gl">gap</span><input class="num" id="gapIn" type="number" value="90"><button class="ui" id="dup">Duplicate</button></div>
+    <span class="sep"></span>
+    <div class="grp"><span class="gl">Vehicle</span><button class="ui" id="addCrane">+ Crane</button><button class="ui" id="addShuttle">+ Shuttle</button><button class="ui" id="addAgv">+ AGV</button></div>
+    <div class="grp"><span class="gl">Structure</span><button class="ui" id="addRack">+ Rack</button><button class="ui" id="addMezz">+ Mezzanine</button><button class="ui" id="addObstacle">+ Obstacle</button><button class="ui" id="addZone">+ Zone</button></div>
+    <span class="sep"></span>
+    <div class="grp"><button class="ui" id="del">Delete</button><button class="ui" id="ld">⤒ Load</button><button class="ui" id="exp">⤓ Export</button><button class="ui" id="runV" title="Export straight into the live Viewer — no file step" style="font-weight:800">▶ Run in Viewer</button><button class="ui" id="paraB" title="Parametric quick-build: whole facility from a dozen numbers, with validation" onclick="location.href='configurator_idbm_v0.3.html'">⚙ Parametric</button><input id="ldFile" type="file" accept="application/json,.json" style="display:none"></div>
+  </div>
+
+  <div class="panel" id="levels">
+    <div class="lbl">Levels (Z height)</div>
+    <div class="chips" id="chips"></div>
+    <div class="zrow"><span class="gl">Floor→Belt</span><input class="num w" id="fboIn" type="number" min="210" value="310"><span class="gl">mm (≥210)</span></div>
+    <div class="zrow"><span class="gl">Copy sel → Z</span><input class="num w" id="zIn" type="number" value="2000"><button class="ui" id="cpz">Go</button></div>
+    <label class="toggle"><input type="checkbox" id="showOthers" checked> show other levels (ghost)</label>
+  </div>
+
+  <div class="panel" id="props"><div class="lbl">Selection</div>
+    <div id="propsBody"><div class="empty">Add an IDBM, set its length, then <b>Build</b> an array. Marquee-drag to select; <b>Copy sel → Z</b> stacks a shelf.</div></div></div>
+
+  <div class="panel" id="status"><span>IDBMs <b id="nIdbm">0</b></span><span>Lanes <b id="nLane">0</b></span><span>Active Z <b id="aZ">0</b></span><span>Selected <b id="nSel">0</b></span></div>
+  <div class="panel" id="hint"><b>Drag</b> marquee-select · <b>Drag unit</b> move · <b>Right-drag</b> pan · <b>Scroll</b> zoom · <b>R</b> rotate · <b>Del</b> delete · <b>Alt-click</b> grab a mezzanine/zone</div>
+  <div id="toast"></div>
+</div>
+
+<script src="components/crane/crane.js"></script>      <!-- vehicle components (read-only includes; owned by the component session) -->
+<script src="components/shuttle/shuttle.js"></script>
+<script src="components/agv/agv.js"></script>
+<script src="components/rack/rack.js"></script>
+<script src="components/mezzanine/mezzanine.js"></script>
+<script src="components/obstacle/obstacle.js"></script>
+<script src="components/zone/zone.js"></script>
+<script>
+(function(){
+  const IDBM_W=300, GRID=100, SNAP=260;
+  const LANE_COLORS=[0x6aa9ff,0x54c2a0,0xf0b95e,0xa98cf0,0xf08aa6,0x67b8d6,0xe88a5a];
+  let idbms=[], nextId=1, nextLane=1, activeZ=0;
+  let vehicles=[], nextVeh=1, selVeh=null;   // vehicles (crane/shuttle/agv) = IDBM arrays on a moving mount
+  let routeMode=false,routeVeh=null;   // AGV polyline route authoring (click to add waypoints)
+  let snapLines=[],snapActive=-1;      // MD insertion lines: open IDBM ends facing each other across a gap
+  const sel=new Set();
+  const dir=a=>[Math.cos(a),Math.sin(a)];
+  const ends=d=>{const u=dir(d.ang),h=d.L/2;return {a:[d.cx-u[0]*h,d.cy-u[1]*h],b:[d.cx+u[0]*h,d.cy+u[1]*h]};};
+  const $=id=>document.getElementById(id);
+
+  const cv=$('scene'),ctx=cv.getContext('2d');
+  let CW=0,CH=0,ORX=0,ORY=0,DPR=Math.min(window.devicePixelRatio||1,2),scale=0.05,panX=0,panY=0;
+  function resize(){CW=cv.clientWidth;CH=cv.clientHeight;cv.width=CW*DPR;cv.height=CH*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);ORX=CW*0.5;ORY=CH*0.5;}
+  addEventListener('resize',resize);resize();
+  const w2s=(x,y)=>[ORX+x*scale+panX,ORY-y*scale+panY];
+  const s2w=(sx,sy)=>[(sx-ORX-panX)/scale,-(sy-ORY-panY)/scale];
+  const shade=(hex,f)=>{const r=(hex>>16)&255,g=(hex>>8)&255,b=hex&255,m=v=>Math.max(0,Math.min(255,v*f|0));return `rgb(${m(r)},${m(g)},${m(b)})`;};
+  const localXY=()=>cv.getBoundingClientRect();
+
+  function corners(d){const u=dir(d.ang),p=[-u[1],u[0]],h=d.L/2,w=IDBM_W/2;
+    return [[d.cx-u[0]*h-p[0]*w,d.cy-u[1]*h-p[1]*w],[d.cx+u[0]*h-p[0]*w,d.cy+u[1]*h-p[1]*w],
+            [d.cx+u[0]*h+p[0]*w,d.cy+u[1]*h+p[1]*w],[d.cx-u[0]*h+p[0]*w,d.cy-u[1]*h+p[1]*w]];}
+
+  // ---- vehicles (drawn in 2D plan from the component's own footprint2D) ----
+  const vehInst=v=>({pose:{position:[v.cx,v.cy,0],yaw:v.yaw},params:v.params});
+  const VREG={}; if(window.TZ_CRANE)VREG.crane=window.TZ_CRANE; if(window.TZ_SHUTTLE)VREG.shuttle=window.TZ_SHUTTLE; if(window.TZ_AGV)VREG.agv=window.TZ_AGV;
+  if(window.TZ_RACK)VREG.rack=window.TZ_RACK; if(window.TZ_MEZZANINE)VREG.mezzanine=window.TZ_MEZZANINE; if(window.TZ_OBSTACLE)VREG.obstacle=window.TZ_OBSTACLE; if(window.TZ_ZONE)VREG.zone=window.TZ_ZONE;
+  function ptInPoly(px,py,pl){let h=false;for(let i=0,j=pl.length-1;i<pl.length;j=i++){const xi=pl[i][0],yi=pl[i][1],xj=pl[j][0],yj=pl[j][1];if(((yi>py)!==(yj>py))&&(px<(xj-xi)*(py-yi)/(yj-yi)+xi))h=!h;}return h;}
+  function hitVehicle(wx,wy){for(let i=vehicles.length-1;i>=0;i--){const c=VREG[vehicles[i].type];if(c&&ptInPoly(wx,wy,c.footprint2D(vehInst(vehicles[i]))))return vehicles[i];}return null;}
+  function drawVehicle(v){const C=VREG[v.type];if(!C)return;const isVeh=C.category==='vehicle';const pts=C.footprint2D(vehInst(v)).map(q=>w2s(q[0],q[1])),isSel=v.id===selVeh;
+    ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);ctx.closePath();
+    const bad=isVeh&&v._collide;
+    const tint=bad?'rgba(224,86,74,0.22)':isVeh?'rgba(43,108,255,0.08)':v.type==='zone'?'rgba(46,160,67,0.12)':v.type==='obstacle'?'rgba(110,116,128,0.20)':'rgba(65,90,119,0.14)';
+    ctx.fillStyle=tint;ctx.fill();ctx.lineWidth=bad?2.8:(isSel?2.4:1.4);ctx.strokeStyle=bad?'#e0564a':(isSel?'#1b48b8':(isVeh?'#2f63d6':'#5a6675'));ctx.stroke();
+    if(isVeh){const N=Math.max(1,v.params['bed.laneCount']||10),L=v.params['bed.idbmLength']||2500,u=dir(v.yaw),p=[-u[1],u[0]],hl=L/2,hw=IDBM_W/2;
+      ctx.lineWidth=1;ctx.strokeStyle='rgba(20,32,48,0.5)';ctx.fillStyle='rgba(176,187,202,0.92)';
+      for(let i=0;i<N;i++){const off=(i-(N-1)/2)*IDBM_W,cx=v.cx+u[0]*off,cy=v.cy+u[1]*off,
+        cc=[[cx-p[0]*hl-u[0]*hw,cy-p[1]*hl-u[1]*hw],[cx+p[0]*hl-u[0]*hw,cy+p[1]*hl-u[1]*hw],[cx+p[0]*hl+u[0]*hw,cy+p[1]*hl+u[1]*hw],[cx-p[0]*hl+u[0]*hw,cy-p[1]*hl+u[1]*hw]].map(q=>w2s(q[0],q[1]));
+        ctx.beginPath();ctx.moveTo(cc[0][0],cc[0][1]);for(let k=1;k<4;k++)ctx.lineTo(cc[k][0],cc[k][1]);ctx.closePath();ctx.fill();ctx.stroke();}
+      const s=w2s(v.cx,v.cy);ctx.fillStyle='#1b48b8';ctx.font='700 11px -apple-system,Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(v.type.toUpperCase()+' '+N+'×'+L,s[0],s[1]);}
+    else{const s=w2s(v.cx,v.cy);ctx.fillStyle='#3a4452';ctx.font='700 11px -apple-system,Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(v.type.toUpperCase(),s[0],s[1]);}}
+
+  function grid(){
+    ctx.lineWidth=1;const [wx0,wy0]=s2w(0,CH),[wx1,wy1]=s2w(CW,0),step=1000;
+    ctx.strokeStyle='rgba(120,140,165,0.20)';ctx.beginPath();
+    for(let x=Math.floor(wx0/step)*step;x<=wx1;x+=step){const a=w2s(x,wy0),b=w2s(x,wy1);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}
+    for(let y=Math.floor(wy0/step)*step;y<=wy1;y+=step){const a=w2s(wx0,y),b=w2s(wx1,y);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}
+    ctx.stroke();
+    const o=w2s(0,0);ctx.strokeStyle='rgba(43,108,255,0.5)';ctx.lineWidth=1.5;ctx.beginPath();
+    ctx.moveTo(o[0]-9,o[1]);ctx.lineTo(o[0]+9,o[1]);ctx.moveTo(o[0],o[1]-9);ctx.lineTo(o[0],o[1]+9);ctx.stroke();}
+
+  function drawIdbm(d,ghost){
+    const c=corners(d).map(p=>w2s(p[0],p[1])),isSel=sel.has(d.id);
+    const base=d.laneId?LANE_COLORS[(d.laneId-1)%LANE_COLORS.length]:0xb9c2cf;
+    ctx.beginPath();ctx.moveTo(c[0][0],c[0][1]);for(let i=1;i<4;i++)ctx.lineTo(c[i][0],c[i][1]);ctx.closePath();
+    if(ghost){ctx.globalAlpha=0.16;ctx.fillStyle=shade(base,1);ctx.fill();ctx.globalAlpha=1;return;}
+    ctx.fillStyle=shade(base,1);ctx.fill();
+    ctx.lineWidth=isSel?2.4:1;ctx.strokeStyle=isSel?'#1b48b8':'rgba(20,32,48,0.30)';ctx.stroke();
+    if(scale>0.025){ctx.strokeStyle='rgba(20,32,48,0.16)';ctx.lineWidth=1;ctx.beginPath();
+      const u=dir(d.ang),p=[-u[1],u[0]];
+      for(let k=-1;k<=1;k++){const off=k*IDBM_W/4;
+        const a=w2s(d.cx-u[0]*d.L/2+p[0]*off,d.cy-u[1]*d.L/2+p[1]*off),b=w2s(d.cx+u[0]*d.L/2+p[0]*off,d.cy+u[1]*d.L/2+p[1]*off);
+        ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}ctx.stroke();}
+    if(isSel){const e=ends(d);[e.a,e.b].forEach((pt,i)=>{const s=w2s(pt[0],pt[1]);
+      ctx.fillStyle=i===0?'#ef4444':'#16a34a';ctx.beginPath();ctx.arc(s[0],s[1],3.5,0,7);ctx.fill();});}
+  }
+  let marquee=null;
+  // ---- vehicle travel corridor (laneway): Configurator owns travelExtent (served-array span); the model owns the swept boundary ----
+  function fitTravel(v){const C=VREG[v.type];if(!C||C.category!=='vehicle'||!v.travelAuto)return;
+    const u=dir(v.yaw),p=[-u[1],u[0]],bed=(v.params['bed.idbmLength']||v.params['deck.depth']||2500),band=bed*1.6+700;
+    let aMin=Infinity,aMax=-Infinity,found=false;
+    idbms.forEach(d=>{const rx=d.cx-v.cx,ry=d.cy-v.cy,along=rx*u[0]+ry*u[1],cross=rx*p[0]+ry*p[1];
+      if(Math.abs(cross)<=band){const du=dir(d.ang),proj=Math.abs(du[0]*u[0]+du[1]*u[1])*d.L/2;aMin=Math.min(aMin,along-proj);aMax=Math.max(aMax,along+proj);found=true;}});
+    vehicles.forEach(o=>{const C2=VREG[o.type];if(o.id===v.id||!C2||C2.category!=='racking')return;
+      C2.footprint2D(vehInst(o)).forEach(q=>{const rx=q[0]-v.cx,ry=q[1]-v.cy,along=rx*u[0]+ry*u[1],cross=rx*p[0]+ry*p[1];
+        if(Math.abs(cross)<=band+bed){aMin=Math.min(aMin,along);aMax=Math.max(aMax,along);found=true;}});});
+    if(!found){v.travel=6000;v.travelMid=0;return;}
+    v.travelMid=(aMin+aMax)/2;v.travel=Math.max(0,aMax-aMin);}
+  function polyOverlap(A,B){for(let s=0;s<2;s++){const P=s?B:A;for(let i=0;i<P.length;i++){const j=(i+1)%P.length,nx=-(P[j][1]-P[i][1]),ny=P[j][0]-P[i][0];
+    let a0=Infinity,a1=-Infinity,b0=Infinity,b1=-Infinity;A.forEach(p=>{const d=p[0]*nx+p[1]*ny;a0=Math.min(a0,d);a1=Math.max(a1,d);});B.forEach(p=>{const d=p[0]*nx+p[1]*ny;b0=Math.min(b0,d);b1=Math.max(b1,d);});
+    if(a1<b0||b1<a0)return false;}}return true;}
+  function corridorOf(v){const C=VREG[v.type];if(!C||!C.laneway2D)return null;const u=dir(v.yaw),mid=v.travelMid||0;
+    return C.laneway2D({pose:{position:[v.cx+u[0]*mid,v.cy+u[1]*mid,0],yaw:v.yaw},params:v.params},v.travel||0);}
+  function agvStatus(v){const corr=corridorOf(v);if(!corr)return null;let hits=0,x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+    corr.forEach(c=>{x0=Math.min(x0,c[0]);x1=Math.max(x1,c[0]);y0=Math.min(y0,c[1]);y1=Math.max(y1,c[1]);});
+    vehicles.forEach(o=>{if(o.type!=='obstacle')return;const C2=VREG[o.type];if(C2&&polyOverlap(corr,C2.footprint2D(vehInst(o))))hits++;});   // columns/walls/machines
+    idbms.forEach(d=>{if(d.cx<x0-d.L||d.cx>x1+d.L||d.cy<y0-d.L||d.cy>y1+d.L)return;if(polyOverlap(corr,corners(d)))hits++;});                 // fixed IDBM lines (bbox pre-filter)
+    const dz=[];vehicles.forEach(o=>{if(o.type==='zone'&&o.params['zone.kind']==='agv_drivable'){const C2=VREG[o.type];if(C2)dz.push(C2.footprint2D(vehInst(o)));}});
+    const outOfZone=dz.length?corr.some(c=>!dz.some(z=>ptInPoly(c[0],c[1],z))):false;                                                          // must stay inside agv_drivable (if any defined)
+    return {hits:hits,outOfZone:outOfZone,clear:(hits===0&&!outOfZone)};}
+  function refitAll(){vehicles.forEach(v=>{fitTravel(v);if(v.type==='agv'){if(v.route&&v.route.length>1){v.routeW=[];for(let i=0;i<v.route.length-1;i++)v.routeW[i]=agvAutoWidth(v.route[i],v.route[i+1]);v._status={clear:true,routed:true};}else v._status=agvStatus(v);}});}
+  function drawLaneway(v){const C=VREG[v.type];if(!C||C.category!=='vehicle'||!C.laneway2D)return;
+    if(v.type==='agv'&&v.track&&v.track.length){drawTrack(v);return;}
+    if(v.type==='agv'&&v.route&&v.route.length>1){drawRoute(v);return;}
+    const wc=corridorOf(v);if(!wc)return;const poly=wc.map(q=>w2s(q[0],q[1])),agv=v.type==='agv',bad=agv&&v._status&&!v._status.clear;
+    ctx.save();ctx.beginPath();ctx.moveTo(poly[0][0],poly[0][1]);for(let i=1;i<poly.length;i++)ctx.lineTo(poly[i][0],poly[i][1]);ctx.closePath();
+    ctx.fillStyle=bad?'rgba(220,64,64,0.12)':(agv?'rgba(46,160,67,0.07)':'rgba(242,101,34,0.06)');ctx.fill();
+    ctx.setLineDash([7,5]);ctx.lineWidth=bad?1.8:1.3;ctx.strokeStyle=bad?'rgba(220,64,64,0.95)':(agv?'rgba(46,160,67,0.75)':'rgba(242,101,34,0.65)');ctx.stroke();ctx.setLineDash([]);ctx.restore();}
+  function hitHandle(sx,sy){if(selVeh==null)return null;const v=vehicles.find(x=>x.id===selVeh),C=v&&VREG[v.type];if(!v||!C||C.category!=='vehicle')return null;
+    if(v.type==='agv'&&v.track&&v.track.length){const T=buildTrack(v),s=w2s(T.end[0],T.end[1]);if(Math.hypot(sx-s[0],sy-s[1])<12)return {kind:'trackEnd'};return null;}   // grab the end node to stretch the last straight
+    if(v.type==='agv'&&v.route&&v.route.length){for(let i=0;i<v.route.length;i++){const s=w2s(v.route[i][0],v.route[i][1]);if(Math.hypot(sx-s[0],sy-s[1])<10)return {kind:'node',i:i};}return null;}
+    const u=dir(v.yaw),half=(v.travel||0)/2,mid=v.travelMid||0;
+    const sA=w2s(v.cx+u[0]*(mid-half),v.cy+u[1]*(mid-half)),sB=w2s(v.cx+u[0]*(mid+half),v.cy+u[1]*(mid+half));
+    if(Math.hypot(sx-sA[0],sy-sA[1])<10)return {kind:'end',end:'A'};
+    if(Math.hypot(sx-sB[0],sy-sB[1])<10)return {kind:'end',end:'B'};
+    return null;}
+  function drawHandles(v){const C=VREG[v.type];if(!C||C.category!=='vehicle')return;
+    if(v.type==='agv'&&v.route&&v.route.length){v.route.forEach(p=>{const s=w2s(p[0],p[1]);ctx.beginPath();ctx.arc(s[0],s[1],5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#1b48b8';ctx.stroke();});return;}
+    const u=dir(v.yaw),half=(v.travel||0)/2,mid=v.travelMid||0;
+    [mid-half,mid+half].forEach(a=>{const s=w2s(v.cx+u[0]*a,v.cy+u[1]*a);
+      ctx.beginPath();ctx.arc(s[0],s[1],6,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#1b48b8';ctx.stroke();});}
+  function agvAutoWidth(a,b){const dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len,nx=-uy,ny=ux;   // auto corridor half-widths from nearest IDBM/obstacle on each side
+    let hL=1e9,hR=1e9;const eat=pts=>pts.forEach(c=>{const rx=c[0]-a[0],ry=c[1]-a[1],t=rx*ux+ry*uy;if(t<-150||t>len+150)return;const lat=rx*nx+ry*ny;if(lat>=0)hL=Math.min(hL,lat);else hR=Math.min(hR,-lat);});
+    idbms.forEach(d=>eat(corners(d)));vehicles.forEach(o=>{if(o.type==='obstacle'){const C2=VREG[o.type];if(C2)eat(C2.footprint2D(vehInst(o)));}});
+    const B=250,LO=550,HI=2000;return {l:Math.max(LO,Math.min(HI,hL-B)),r:Math.max(LO,Math.min(HI,hR-B))};}
+  function drawRoute(v){const R=v.route;if(!R||!R.length)return;ctx.save();
+    for(let i=0;i<R.length-1;i++){const a=R[i],b=R[i+1],w=(v.routeW&&v.routeW[i])||{l:700,r:700};
+      const dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len;
+      const p=[[a[0]+nx*w.l,a[1]+ny*w.l],[b[0]+nx*w.l,b[1]+ny*w.l],[b[0]-nx*w.r,b[1]-ny*w.r],[a[0]-nx*w.r,a[1]-ny*w.r]].map(q=>w2s(q[0],q[1]));
+      const tight=Math.min(w.l,w.r)<=650;ctx.beginPath();ctx.moveTo(p[0][0],p[0][1]);for(let k=1;k<4;k++)ctx.lineTo(p[k][0],p[k][1]);ctx.closePath();
+      ctx.fillStyle=tight?'rgba(232,150,40,0.18)':'rgba(46,160,67,0.12)';ctx.fill();ctx.lineWidth=1;ctx.strokeStyle=tight?'rgba(232,150,40,0.75)':'rgba(46,160,67,0.6)';ctx.stroke();}
+    ctx.beginPath();const s0=w2s(R[0][0],R[0][1]);ctx.moveTo(s0[0],s0[1]);for(let i=1;i<R.length;i++){const s=w2s(R[i][0],R[i][1]);ctx.lineTo(s[0],s[1]);}
+    ctx.setLineDash([6,4]);ctx.lineWidth=1.4;ctx.strokeStyle='rgba(40,60,90,0.65)';ctx.stroke();ctx.setLineDash([]);ctx.restore();}
+  // ---- MD snap lines: where open (unmated) IDBM ends face each other across a gap, an MD belongs ----
+  function computeSnaps(){snapLines=[];const act=idbms.filter(d=>d.z===activeZ);if(act.length<2)return;
+    const TOL=120,en=[];
+    act.forEach(d=>{const u=dir(d.ang||0),h=d.L/2;
+      en.push({x:d.cx-u[0]*h,y:d.cy-u[1]*h,nx:-u[0],ny:-u[1]});
+      en.push({x:d.cx+u[0]*h,y:d.cy+u[1]*h,nx:u[0],ny:u[1]});});
+    const open=en.filter(e=>!en.some(o=>o!==e&&Math.abs(o.x-e.x)<TOL&&Math.abs(o.y-e.y)<TOL&&(o.nx*e.nx+o.ny*e.ny)<-0.9));   // unmated ends
+    const fm={};open.forEach(e=>{const q=((Math.round(Math.atan2(e.ny,e.nx)/(Math.PI/2))%4)+4)%4,dp=Math.round((e.x*e.nx+e.y*e.ny)/150)*150;(fm[q+'|'+dp]=fm[q+'|'+dp]||[]).push(e);});
+    const faces=Object.values(fm).map(es=>{const nx=es[0].nx,ny=es[0].ny,tx=-ny,ty=nx,pr=es.map(e=>e.x*tx+e.y*ty);
+      return{nx,ny,tx,ty,cx:es.reduce((a,e)=>a+e.x,0)/es.length,cy:es.reduce((a,e)=>a+e.y,0)/es.length,t0:Math.min(...pr),t1:Math.max(...pr),n:es.length};});
+    for(let i=0;i<faces.length;i++)for(let j=0;j<faces.length;j++){if(i===j)continue;const A=faces[i],B=faces[j];
+      if(A.nx*B.nx+A.ny*B.ny>-0.9)continue;
+      const gap=(B.cx-A.cx)*A.nx+(B.cy-A.cy)*A.ny;if(gap<200||gap>6000)continue;                          // B faces A across an MD-sized gap
+      const bc=B.cx*A.tx+B.cy*A.ty,bh=(B.t1-B.t0)/2,o0=Math.max(A.t0,bc-bh),o1=Math.min(A.t1,bc+bh);if(o1-o0<250)continue;   // cross-overlap
+      const dA=A.cx*A.nx+A.cy*A.ny,dB=B.cx*A.nx+B.cy*A.ny,md=(dA+dB)/2,tc=(o0+o1)/2;   // centre on the gap (normal) and the overlap (tangent), not the wide face's centroid
+      const mcx=A.nx*md+A.tx*tc,mcy=A.ny*md+A.ty*tc;
+      const L={gap:Math.round(gap),nx:A.nx,ny:A.ny,tx:A.tx,ty:A.ty,cx:mcx,cy:mcy,
+        P0:[A.nx*md+A.tx*o0,A.ny*md+A.ty*o0],P1:[A.nx*md+A.tx*o1,A.ny*md+A.ty*o1],wide:Math.round((o1-o0)/IDBM_W)+1};
+      if(!snapLines.some(u=>Math.hypot(u.cx-L.cx,u.cy-L.cy)<200))snapLines.push(L);}}
+  function drawSnapLines(){if(!snapLines.length)return;ctx.save();
+    snapLines.forEach((L,i)=>{const on=i===snapActive,a=w2s(L.P0[0],L.P0[1]),b=w2s(L.P1[0],L.P1[1]);
+      ctx.setLineDash([11,7]);ctx.lineWidth=on?3:1.5;ctx.strokeStyle=on?'rgba(43,108,255,0.95)':'rgba(43,108,255,0.4)';
+      ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
+      const m=w2s(L.cx,L.cy);ctx.setLineDash([]);ctx.font='600 10px -apple-system,Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+      const txt='⇄ '+L.gap+' · '+L.wide+'w',tw=ctx.measureText(txt).width;
+      ctx.fillStyle=on?'rgba(43,108,255,0.96)':'rgba(43,108,255,0.55)';ctx.fillRect(m[0]-tw/2-4,m[1]-8,tw+8,16);
+      ctx.fillStyle='#fff';ctx.fillText(txt,m[0],m[1]);});
+    ctx.setLineDash([]);ctx.restore();}
+  function snapVehicle(v,rx,ry){const C=VREG[v.type];if(C&&C.category!=='vehicle'){v.cx=rx;v.cy=ry;return -1;}   // only MDs snap to insertion lines
+    let best=-1,bd=1e9,bL=null;
+    snapLines.forEach((L,i)=>{const pd=(rx-L.cx)*L.nx+(ry-L.cy)*L.ny,tp=(rx-L.cx)*L.tx+(ry-L.cy)*L.ty;
+      const t0=(L.P0[0]-L.cx)*L.tx+(L.P0[1]-L.cy)*L.ty,t1=(L.P1[0]-L.cx)*L.tx+(L.P1[1]-L.cy)*L.ty;
+      if(tp<Math.min(t0,t1)-2000||tp>Math.max(t0,t1)+2000)return;if(Math.abs(pd)<bd){bd=Math.abs(pd);best=i;bL=L;}});
+    if(best>=0&&bd<1100){const pd=(rx-bL.cx)*bL.nx+(ry-bL.cy)*bL.ny;v.cx=rx-bL.nx*pd;v.cy=ry-bL.ny*pd;v.yaw=Math.atan2(bL.ty,bL.tx);return best;}
+    v.cx=rx;v.cy=ry;return -1;}
+  // ---- collision: an MD's FULL body footprint must not superimpose another MD, an IDBM, or a structure ----
+  function vfoot(v){const C=VREG[v.type];return C&&C.footprint2D?C.footprint2D(vehInst(v)):null;}
+  function erode(poly,d){let cx=0,cy=0;poly.forEach(p=>{cx+=p[0];cy+=p[1];});cx/=poly.length;cy/=poly.length;
+    return poly.map(p=>{const vx=p[0]-cx,vy=p[1]-cy,L=Math.hypot(vx,vy)||1,k=Math.max(0,(L-d)/L);return [cx+vx*k,cy+vy*k];});}
+  function mdCollides(v){const C=VREG[v.type];if(!C||C.category!=='vehicle')return null;const raw=vfoot(v);if(!raw)return null;const fp=erode(raw,130);   // erode 130mm: belt-to-belt adjacency (MD ends touching the IDBM ends across a transfer gap) is NOT a collision
+    for(const o of vehicles){if(o.id===v.id)continue;const OC=VREG[o.type];if(!OC||['vehicle','racking','obstacle'].indexOf(OC.category)<0)continue;   // skip mezzanine (overhead) + zone (region)
+      const of=OC.footprint2D&&OC.footprint2D(vehInst(o));if(of&&polyOverlap(fp,of))return {what:o.type};}
+    const z=v.z!=null?v.z:activeZ;
+    for(const d of idbms){if(d.z!==z)continue;if(polyOverlap(fp,corners(d)))return {what:'IDBM'};}
+    return null;}
+  function resolveCollide(v){if(!mdCollides(v))return true;const u=dir(v.yaw),ox=v.cx,oy=v.cy;   // slide along the travel axis to the nearest clear spot
+    for(let s=GRID;s<=12000;s+=GRID){for(const dn of [s,-s]){v.cx=ox+u[0]*dn;v.cy=oy+u[1]*dn;if(!mdCollides(v))return true;}}
+    v.cx=ox;v.cy=oy;return false;}
+  function autoPlace(v){computeSnaps();if(!snapLines.length)return false;
+    let best=null,bd=1e18;snapLines.forEach(L=>{const pd=(v.cx-L.cx)*L.nx+(v.cy-L.cy)*L.ny,tp=(v.cx-L.cx)*L.tx+(v.cy-L.cy)*L.ty,dd=pd*pd+tp*tp*0.04;if(dd<bd){bd=dd;best=L;}});
+    if(!best)return false;
+    if(v.params&&v.params['bed.laneCount']!=null)v.params['bed.laneCount']=Math.max(1,best.wide);   // propose MD width from the facing array
+    v.cx=best.cx;v.cy=best.cy;v.yaw=Math.atan2(best.ty,best.tx);resolveCollide(v);v._collide=mdCollides(v);return true;}
+  // ---- AGV track kit: stretchable straights + size-aware L/R turns; path + swept footprint ----
+  function agvDims(v){const C=VREG[v.type];if(!C||!C.footprint2D)return {lx:1500,wy:800};
+    const fp=C.footprint2D({pose:{position:[0,0,0],yaw:0},params:v.params});let a=1e9,b=-1e9,c=1e9,d=-1e9;
+    fp.forEach(p=>{a=Math.min(a,p[0]);b=Math.max(b,p[0]);c=Math.min(c,p[1]);d=Math.max(d,p[1]);});
+    return {lx:b-a,wy:d-c};}                                         // lx = along travel (yaw 0 → X), wy = across
+  function minRadius(v){const d=agvDims(v);return Math.round(Math.max(d.lx,d.wy)/2+400);}   // a long/wide AGV can't make a tight turn — its body would sweep an impossible band
+  function buildTrack(v){const segs=v.track||[],d=agvDims(v),hx=d.lx/2,hy=d.wy/2,rmin=minRadius(v);
+    let x=v.cx,y=v.cy,h=v.yaw||0;const cl=[],sweep=[],ends=[];
+    segs.forEach((s,si)=>{
+      if(s.t==='s'){const len=Math.max(300,s.len||3000),u=[Math.cos(h),Math.sin(h)],q=[-u[1],u[0]],ex=x+u[0]*len,ey=y+u[1]*len;
+        cl.push({type:'line',a:[x,y],b:[ex,ey]});
+        sweep.push([[x+q[0]*hy,y+q[1]*hy],[ex+q[0]*hy,ey+q[1]*hy],[ex-q[0]*hy,ey-q[1]*hy],[x-q[0]*hy,y-q[1]*hy]]);
+        x=ex;y=ey;}
+      else{const dir=(s.t==='L')?1:-1,r=Math.max(rmin,s.r||rmin),ang=Math.PI/2;
+        const cx=x-Math.sin(h)*r*dir,cy=y+Math.cos(h)*r*dir,a0=Math.atan2(y-cy,x-cx),a1=a0+ang*dir;
+        cl.push({type:'arc',c:[cx,cy],r,a0,a1,dir});
+        const Rin=Math.max(0,r-hy),Rout=Math.hypot(r+hy,hx),dth=Math.atan2(hx,r+hy),poly=[];
+        for(let i=0;i<=14;i++){const a=(a0-dth*dir)+((a1+dth*dir)-(a0-dth*dir))*(i/14);poly.push([cx+Math.cos(a)*Rout,cy+Math.sin(a)*Rout]);}
+        for(let i=0;i<=14;i++){const a=a1+(a0-a1)*(i/14);poly.push([cx+Math.cos(a)*Rin,cy+Math.sin(a)*Rin]);}
+        sweep.push(poly);x=cx+Math.cos(a1)*r;y=cy+Math.sin(a1)*r;h+=ang*dir;}
+      ends.push({x,y,h,si});});
+    return {cl,sweep,end:[x,y,h],ends};}
+  function drawTrack(v){const T=buildTrack(v),d=agvDims(v),hx=d.lx/2,hy=d.wy/2;ctx.save();
+    ctx.fillStyle='rgba(240,185,94,0.16)';ctx.strokeStyle='rgba(224,168,58,0.62)';ctx.lineWidth=1.6;ctx.setLineDash([]);   // swept footprint = the AGV route corridor (yellow boundary, floor-marking style)
+    T.sweep.forEach(poly=>{ctx.beginPath();const s0=w2s(poly[0][0],poly[0][1]);ctx.moveTo(s0[0],s0[1]);for(let i=1;i<poly.length;i++){const s=w2s(poly[i][0],poly[i][1]);ctx.lineTo(s[0],s[1]);}ctx.closePath();ctx.fill();ctx.stroke();});
+    ctx.strokeStyle='#e0a83a';ctx.lineWidth=2;ctx.setLineDash([7,5]);ctx.beginPath();   // centreline (the path you draw)
+    T.cl.forEach(s=>{if(s.type==='line'){const a=w2s(s.a[0],s.a[1]),b=w2s(s.b[0],s.b[1]);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}
+      else{for(let i=0;i<=18;i++){const a=s.a0+(s.a1-s.a0)*(i/18),pt=w2s(s.c[0]+Math.cos(a)*s.r,s.c[1]+Math.sin(a)*s.r);if(i===0)ctx.moveTo(pt[0],pt[1]);else ctx.lineTo(pt[0],pt[1]);}}});
+    ctx.stroke();ctx.setLineDash([]);
+    const chev=(x,y,h)=>{const u=[Math.cos(h),Math.sin(h)],q=[-u[1],u[0]],a=w2s(x+u[0]*650,y+u[1]*650),b=w2s(x-u[0]*250-q[0]*430,y-u[1]*250-q[1]*430),c=w2s(x-u[0]*250+q[0]*430,y-u[1]*250+q[1]*430);   // direction arrow
+      ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.lineTo(c[0],c[1]);ctx.closePath();ctx.fillStyle='rgba(224,168,58,0.92)';ctx.fill();};
+    T.cl.forEach(s=>{if(s.type==='line'){chev((s.a[0]+s.b[0])/2,(s.a[1]+s.b[1])/2,Math.atan2(s.b[1]-s.a[1],s.b[0]-s.a[0]));}
+      else{const am=(s.a0+s.a1)/2;chev(s.c[0]+Math.cos(am)*s.r,s.c[1]+Math.sin(am)*s.r,am+Math.PI/2*s.dir);}});
+    (v.stops||[]).forEach(p=>{const e=(p.seg<0||!T.ends[p.seg])?{x:v.cx,y:v.cy,h:v.yaw||0}:T.ends[p.seg];   // pick-up / drop-off zones
+      const u=[Math.cos(e.h),Math.sin(e.h)],q=[-u[1],u[0]],cs=[[-hx,-hy],[hx,-hy],[hx,hy],[-hx,hy]].map(c=>w2s(e.x+u[0]*c[0]+q[0]*c[1],e.y+u[1]*c[0]+q[1]*c[1]));
+      ctx.beginPath();ctx.moveTo(cs[0][0],cs[0][1]);for(let i=1;i<4;i++)ctx.lineTo(cs[i][0],cs[i][1]);ctx.closePath();
+      ctx.fillStyle=p.kind==='D'?'rgba(43,108,255,0.16)':'rgba(46,160,67,0.16)';ctx.fill();ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.strokeStyle=p.kind==='D'?'#2b6cff':'#2ea043';ctx.stroke();ctx.setLineDash([]);
+      const sc=w2s(e.x,e.y);ctx.fillStyle=p.kind==='D'?'#2b6cff':'#1f7a35';ctx.font='800 12px -apple-system,Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.kind==='D'?'DROP-OFF':'PICK-UP',sc[0],sc[1]);});
+    const st=w2s(v.cx,v.cy),en=w2s(T.end[0],T.end[1]);
+    ctx.fillStyle='#2ea043';ctx.beginPath();ctx.arc(st[0],st[1],6,0,7);ctx.fill();
+    ctx.fillStyle='#1b48b8';ctx.beginPath();ctx.arc(en[0],en[1],8,0,7);ctx.fill();ctx.lineWidth=2.5;ctx.strokeStyle='#fff';ctx.stroke();   // end node = drag to stretch the last straight
+    ctx.restore();}
+  // ---- derived floor-marking layer: corridor boundaries + direction arrows + pick-up/drop-off zones (exported as markings[]) ----
+  function genMarkings(){const r=n=>Math.round(n),M=[];
+    vehicles.forEach(v=>{const C=VREG[v.type];if(!C)return;
+      if(v.type==='agv'&&v.track&&v.track.length){const T=buildTrack(v),d=agvDims(v),hx=d.lx/2,hy=d.wy/2;
+        T.sweep.forEach(poly=>M.push({kind:'corridor',color:'yellow',poly:poly.map(p=>[r(p[0]),r(p[1])])}));
+        T.cl.forEach(s=>{if(s.type==='line')M.push({kind:'arrow',at:[r((s.a[0]+s.b[0])/2),r((s.a[1]+s.b[1])/2)],heading:+Math.atan2(s.b[1]-s.a[1],s.b[0]-s.a[0]).toFixed(3)});
+          else{const am=(s.a0+s.a1)/2;M.push({kind:'arrow',at:[r(s.c[0]+Math.cos(am)*s.r),r(s.c[1]+Math.sin(am)*s.r)],heading:+(am+Math.PI/2*s.dir).toFixed(3)});}});
+        (v.stops||[]).forEach(p=>{const e=(p.seg<0||!T.ends[p.seg])?{x:v.cx,y:v.cy,h:v.yaw||0}:T.ends[p.seg],u=[Math.cos(e.h),Math.sin(e.h)],q=[-u[1],u[0]];
+          M.push({kind:'zone',sub:p.kind==='D'?'dropoff':'pickup',poly:[[-hx,-hy],[hx,-hy],[hx,hy],[-hx,hy]].map(c=>[r(e.x+u[0]*c[0]+q[0]*c[1]),r(e.y+u[1]*c[0]+q[1]*c[1])])});});}
+      if(v.type==='shuttle'||v.type==='crane'){const corr=corridorOf(v);if(corr)M.push({kind:'corridor',color:'yellow',poly:corr.map(p=>[r(p[0]),r(p[1])])});}});
+    return M;}
+  window.__genMarkings=()=>genMarkings();
+  function render(){ctx.clearRect(0,0,CW,CH);grid();
+    const showG=$('showOthers').checked;
+    if(showG)idbms.forEach(d=>{if(d.z!==activeZ)drawIdbm(d,true);});
+    idbms.forEach(d=>{if(d.z===activeZ)drawIdbm(d,false);});
+    vehicles.forEach(drawLaneway);
+    drawSnapLines();   // insertion guides drawn over the corridors so they stay visible
+    vehicles.forEach(drawVehicle);
+    if(selVeh!=null){const sv=vehicles.find(x=>x.id===selVeh);if(sv)drawHandles(sv);}
+    if(marquee){ctx.strokeStyle='#2b6cff';ctx.fillStyle='rgba(43,108,255,0.08)';ctx.lineWidth=1;ctx.setLineDash([5,4]);
+      const x=Math.min(marquee.x0,marquee.x1),y=Math.min(marquee.y0,marquee.y1),w=Math.abs(marquee.x1-marquee.x0),h=Math.abs(marquee.y1-marquee.y0);
+      ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);ctx.setLineDash([]);}}
+
+  function hitActive(wx,wy){for(let i=idbms.length-1;i>=0;i--){const d=idbms[i];if(d.z!==activeZ)continue;
+    const u=dir(d.ang),p=[-u[1],u[0]],dx=wx-d.cx,dy=wy-d.cy,lx=dx*u[0]+dy*u[1],ly=dx*p[0]+dy*p[1];
+    if(Math.abs(lx)<=d.L/2&&Math.abs(ly)<=IDBM_W/2)return d;}return null;}
+
+  function snap(d){d.cx=Math.round(d.cx/GRID)*GRID;d.cy=Math.round(d.cy/GRID)*GRID;
+    if(sel.size!==1)return;const me=ends(d);let best=null,bd=SNAP;
+    idbms.forEach(o=>{if(o===d||o.z!==activeZ)return;const oe=ends(o);
+      [[me.a,oe.b],[me.b,oe.a],[me.a,oe.a],[me.b,oe.b]].forEach(pr=>{const dist=Math.hypot(pr[0][0]-pr[1][0],pr[0][1]-pr[1][1]);if(dist<bd){bd=dist;best={f:pr[0],t:pr[1]};}});});
+    if(best){d.cx+=best.t[0]-best.f[0];d.cy+=best.t[1]-best.f[1];}}
+
+  /* ---- interaction ---- */
+  let drag=null;
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+  cv.addEventListener('pointerdown',e=>{try{cv.setPointerCapture(e.pointerId);}catch(_){}
+    const r=localXY(),sx=e.clientX-r.left,sy=e.clientY-r.top,[wx,wy]=s2w(sx,sy);
+    if(routeMode&&routeVeh&&e.button===0){routeVeh.route=routeVeh.route||[];routeVeh.route.push([wx,wy]);render();refresh();return;}
+    const hh=(e.button===2)?null:hitHandle(sx,sy);
+    let vh=(e.button===2||hh)?null:hitVehicle(wx,wy);
+    let h=(e.button===2||hh)?null:hitActive(wx,wy);
+    // OVERHEAD/REGION structures (mezzanine deck, zone) must not block selecting the IDBMs beneath them on the active level.
+    // Normal click → the IDBM (work above/below freely); Alt/Option-click → grab the structure itself even when it covers IDBMs.
+    const _overhead=x=>{const c=x&&VREG[x.type];return !!(c&&(c.category==='mezzanine_deck'||c.category==='zone'));};
+    if(vh&&_overhead(vh)&&h&&!e.altKey){ vh=null; }   // IDBM wins under a mezzanine/zone
+    else if(vh){ h=null; }                            // a discrete vehicle / rack / obstacle keeps click priority
+    if(e.button===2){drag={mode:'pan',x:e.clientX,y:e.clientY};}
+    else if(hh&&hh.kind==='trackEnd'){const tv=vehicles.find(x=>x.id===selVeh);drag={mode:'trackEnd',x:e.clientX,y:e.clientY,eh:tv?buildTrack(tv).end[2]:0};}
+    else if(hh&&hh.kind==='node'){drag={mode:'routeNode',i:hh.i,x:e.clientX,y:e.clientY};}
+    else if(hh){drag={mode:'travelHandle',end:hh.end,x:e.clientX,y:e.clientY};}
+    else if(vh){selVeh=vh.id;sel.clear();drag={mode:'movevehicle',x:e.clientX,y:e.clientY,rx:vh.cx,ry:vh.cy,sx:vh.cx,sy:vh.cy,syaw:vh.yaw};refresh();}
+    else if(h){selVeh=null;if(!e.shiftKey&&!sel.has(h.id))sel.clear();sel.add(h.id);drag={mode:'move',x:e.clientX,y:e.clientY};refresh();}
+    else{selVeh=null;if(!e.shiftKey)sel.clear();drag={mode:'marquee',x:e.clientX,y:e.clientY};marquee={x0:sx,y0:sy,x1:sx,y1:sy};refresh();}
+    render();
+  });
+  cv.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;
+    if(drag.mode==='pan'){panX+=dx;panY+=dy;render();}
+    else if(drag.mode==='move'){const mdx=dx/scale,mdy=-dy/scale;idbms.forEach(d=>{if(sel.has(d.id)){d.cx+=mdx;d.cy+=mdy;}});
+      if(sel.size===1)snap(idbms.find(d=>sel.has(d.id)));render();refresh();}
+    else if(drag.mode==='movevehicle'){const v=vehicles.find(x=>x.id===selVeh);if(v){drag.rx+=dx/scale;drag.ry-=dy/scale;snapActive=snapVehicle(v,drag.rx,drag.ry);v._collide=mdCollides(v);}render();refresh();}
+    else if(drag.mode==='travelHandle'){const v=vehicles.find(x=>x.id===selVeh);if(v){const u=dir(v.yaw),da=(dx/scale)*u[0]+(-dy/scale)*u[1],half=(v.travel||0)/2;
+      let aA=(v.travelMid||0)-half,aB=(v.travelMid||0)+half;if(drag.end==='A')aA+=da;else aB+=da;if(aB<aA){const t=aA;aA=aB;aB=t;drag.end=drag.end==='A'?'B':'A';}
+      v.travel=Math.max(0,aB-aA);v.travelMid=(aA+aB)/2;v.travelAuto=false;render();refresh();}}
+    else if(drag.mode==='trackEnd'){const v=vehicles.find(x=>x.id===selVeh);if(v&&v.track&&v.track.length){const last=v.track[v.track.length-1];if(last&&last.t==='s'){const u=[Math.cos(drag.eh),Math.sin(drag.eh)],dl=(dx/scale)*u[0]+(-dy/scale)*u[1];last.len=Math.max(300,last.len+dl);}}render();refresh();}
+    else if(drag.mode==='routeNode'){const v=vehicles.find(x=>x.id===selVeh);if(v&&v.route&&v.route[drag.i]){v.route[drag.i][0]+=dx/scale;v.route[drag.i][1]-=dy/scale;}render();refresh();}
+    else if(drag.mode==='marquee'&&marquee){const r=localXY();marquee.x1=e.clientX-r.left;marquee.y1=e.clientY-r.top;render();}});
+  cv.addEventListener('pointerup',()=>{
+    if(drag&&drag.mode==='marquee'&&marquee&&Math.hypot(marquee.x1-marquee.x0,marquee.y1-marquee.y0)>4){
+      const [ax,ay]=s2w(marquee.x0,marquee.y0),[bx,by]=s2w(marquee.x1,marquee.y1);
+      const x0=Math.min(ax,bx),x1=Math.max(ax,bx),y0=Math.min(ay,by),y1=Math.max(ay,by);
+      idbms.forEach(d=>{if(d.z===activeZ&&d.cx>=x0&&d.cx<=x1&&d.cy>=y0&&d.cy<=y1)sel.add(d.id);});}
+    if(drag&&drag.mode==='movevehicle'){const v=vehicles.find(x=>x.id===selVeh);
+      if(v&&mdCollides(v)){if(resolveCollide(v))toast('Nudged clear of overlap');else{const c=mdCollides(v);v.cx=drag.sx;v.cy=drag.sy;v.yaw=drag.syaw;toast('Can’t place there — would overlap '+((c&&c.what)||'something'));}v._collide=mdCollides(v);}}
+    snapActive=-1;marquee=null;drag=null;render();refresh();});
+  cv.addEventListener('wheel',e=>{e.preventDefault();const r=localXY(),mx=e.clientX-r.left,my=e.clientY-r.top,[wx,wy]=s2w(mx,my);
+    scale=Math.max(0.006,Math.min(0.5,scale*(e.deltaY<0?1.1:0.9)));const ns=w2s(wx,wy);panX+=mx-ns[0];panY+=my-ns[1];render();},{passive:false});
+
+  /* ---- actions ---- */
+  let toastT;
+  function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1600);}
+  function addIdbm(){const c=s2w(CW/2,CH/2);const d={id:nextId++,cx:Math.round(c[0]/GRID)*GRID,cy:Math.round(c[1]/GRID)*GRID,z:activeZ,ang:0,L:parseFloat($('lenIn').value)||6000,laneId:null};
+    idbms.push(d);sel.clear();sel.add(d.id);render();refresh();}
+  function rotate(){if(selVeh!=null){const v=vehicles.find(x=>x.id===selVeh);if(v)v.yaw=(v.yaw+Math.PI/2)%(Math.PI*2);render();refresh();return;}idbms.forEach(d=>{if(sel.has(d.id))d.ang=(d.ang+Math.PI/2)%(Math.PI*2);});render();refresh();}
+  function setLen(){const v=parseFloat($('lenIn').value);if(!(v>0))return;idbms.forEach(d=>{if(sel.has(d.id))d.L=v;});render();refresh();}
+  let arrDir=[1,1];                                                     // world-space quadrant the array grows into (↗ = the historical default)
+  document.querySelectorAll('#arrQuad button').forEach(b=>b.onclick=()=>{arrDir=b.getAttribute('data-q').split(',').map(Number);
+    document.querySelectorAll('#arrQuad button').forEach(x=>x.classList.toggle('on',x===b));});
+  function arrayBuild(){if(sel.size!==1){toast('Select exactly one IDBM to build an array');return;}
+    const seed=idbms.find(d=>sel.has(d.id)),N=Math.max(1,parseInt($('acrossIn').value)||1),M=Math.max(1,parseInt($('alongIn').value)||1);
+    const u=dir(seed.ang),p=[-u[1],u[0]],created=[];
+    const su=(arrDir[0]*u[0]+arrDir[1]*u[1])>=0?1:-1, sp=(arrDir[0]*p[0]+arrDir[1]*p[1])>=0?1:-1;   // grow toward the picked quadrant whatever the seed's rotation
+    for(let i=0;i<N;i++)for(let j=0;j<M;j++){if(i===0&&j===0)continue;
+      idbms.push({id:nextId,cx:seed.cx+p[0]*IDBM_W*i*sp+u[0]*seed.L*j*su,cy:seed.cy+p[1]*IDBM_W*i*sp+u[1]*seed.L*j*su,z:seed.z,ang:seed.ang,L:seed.L,laneId:seed.laneId});created.push(nextId++);}
+    created.forEach(id=>sel.add(id));toast(`Built ${N}×${M} = ${N*M} IDBMs`);render();refresh();}
+  function duplicate(){if(sel.size<1){toast('Nothing selected');return;}
+    const items=idbms.filter(d=>sel.has(d.id));let mnx=1e9,mxx=-1e9,mny=1e9,mxy=-1e9;
+    items.forEach(it=>corners(it).forEach(c=>{mnx=Math.min(mnx,c[0]);mxx=Math.max(mxx,c[0]);mny=Math.min(mny,c[1]);mxy=Math.max(mxy,c[1]);}));
+    const gap=parseFloat($('gapIn').value)||0,dd=$('dirSel').value;let ox=0,oy=0;
+    if(dd==='R')ox=(mxx-mnx)+gap;else if(dd==='L')ox=-((mxx-mnx)+gap);else if(dd==='U')oy=(mxy-mny)+gap;else oy=-((mxy-mny)+gap);
+    const created=[];items.forEach(it=>{idbms.push({id:nextId,cx:it.cx+ox,cy:it.cy+oy,z:it.z,ang:it.ang,L:it.L,laneId:it.laneId});created.push(nextId++);});
+    sel.clear();created.forEach(id=>sel.add(id));toast(`Duplicated ${items.length} (gap ${gap} mm)`);render();refresh();}
+  function group(){if(sel.size<1)return;const id=nextLane++;idbms.forEach(d=>{if(sel.has(d.id))d.laneId=id;});render();refresh();}
+  function addVehicle(type){const comp=VREG[type];if(!comp){toast(type+'.js not loaded');return;}
+    const c=s2w(CW/2,CH/2),def=Object.assign({},comp.defaults||{});
+    const v={id:nextVeh++,type:type,cx:Math.round(c[0]/GRID)*GRID,cy:Math.round(c[1]/GRID)*GRID,z:activeZ,yaw:0,params:def,travel:0,travelMid:0,travelAuto:true,route:[]};
+    vehicles.push(v);
+    const snapped=(comp.category==='vehicle')&&autoPlace(v);   // new MD jumps to the nearest insertion line, sized to the facing array, clear of others
+    fitTravel(v);selVeh=v.id;sel.clear();
+    toast(((comp.schemaType&&comp.schemaType.name)||type)+(snapped?' — snapped to nearest insertion line':' added — edit params at right'));refresh();render();}
+  function del(){if(selVeh!=null){vehicles=vehicles.filter(v=>v.id!==selVeh);selVeh=null;render();refresh();return;}idbms=idbms.filter(d=>!sel.has(d.id));sel.clear();render();refresh();}
+  function copyToZ(){if(sel.size<1){toast('Select units to copy to a new level');return;}const z=parseFloat($('zIn').value);if(isNaN(z))return;
+    const items=idbms.filter(d=>sel.has(d.id)),created=[];
+    items.forEach(it=>{idbms.push({id:nextId,cx:it.cx,cy:it.cy,z,ang:it.ang,L:it.L,laneId:it.laneId});created.push(nextId++);});
+    activeZ=z;sel.clear();created.forEach(id=>sel.add(id));toast(`Copied ${items.length} to Z = ${z} mm`);render();refresh();}
+  function buildDoc(){
+    for(const v of vehicles){const C=VREG[v.type];if(C&&C.category==='vehicle'){const c=mdCollides(v);if(c){selVeh=v.id;v._collide=c;render();toast('Fix overlap first: '+v.type.toUpperCase()+' overlaps '+c.what);return null;}}}   // never export a layout with superimposed MDs
+    const r=n=>Math.round(n),FBO=Math.max(210,parseFloat($('fboIn').value)||310),zoff=FBO-200;   // belt plane datum: ground belt at FBO; vehicle bed sits FBO-200 below its belt
+    const inst=idbms.map(d=>{const e=ends(d);return{instanceId:`IDBM-${String(d.id).padStart(4,'0')}`,typeRef:"idbm",
+      params:{width:IDBM_W,length:r(d.L),height:170},
+      datum:{endA:[r(e.a[0]),r(e.a[1]),r(d.z+zoff)],endB:[r(e.b[0]),r(e.b[1]),r(d.z+zoff)]},
+      coordSource:{mode:"design",timestamp:new Date().toISOString()},laneId:d.laneId?`LANE-${String(d.laneId).padStart(2,'0')}`:null};});
+    const laneIds=[...new Set(idbms.filter(d=>d.laneId).map(d=>d.laneId))];
+    const lanes=laneIds.map(L=>({laneId:`LANE-${String(L).padStart(2,'0')}`,memberIdbmIds:idbms.filter(d=>d.laneId===L).map(d=>`IDBM-${String(d.id).padStart(4,'0')}`)}));
+    const isVeh=t=>{const c=VREG[t];return !!(c&&c.category==='vehicle');};
+    const veh=vehicles.filter(v=>isVeh(v.type)).map(v=>({instanceId:`${v.type.toUpperCase()}-${String(v.id).padStart(3,'0')}`,typeRef:v.type,
+      pose:{position:[r(v.cx),r(v.cy),0],yaw:v.yaw},params:Object.assign({},v.params,{'base.beamHeight':Math.min(125,zoff),'chassis.height':zoff}),travel:r(v.travel||0),travelMid:r(v.travelMid||0),route:(v.route||[]).map(p=>[r(p[0]),r(p[1])]),routeWidths:(v.routeW||null),track:(v.track||[]),stops:(v.stops||[]),coordSource:{mode:"design",timestamp:new Date().toISOString()}}));
+    const objs=vehicles.filter(v=>!isVeh(v.type)).map(v=>({instanceId:`${v.type.toUpperCase()}-${String(v.id).padStart(3,'0')}`,typeRef:v.type,category:(VREG[v.type]||{}).category,
+      pose:{position:[r(v.cx),r(v.cy),0],yaw:v.yaw},params:v.params,coordSource:{mode:"design",timestamp:new Date().toISOString()}}));
+    return {schema:"tetrisize.platform/v0.3",site:{siteId:"site-1",units:"mm",up:"Z",handedness:"right",origin:{x:0,y:0,z:0},floorToBeltOffset:FBO},
+      levels:[...new Set(idbms.map(d=>d.z))].sort((a,b)=>a-b).map(z=>({levelId:`Z${z}`,baseZ:z})),instances:inst,lanes,vehicles:veh,objects:objs,markings:genMarkings(),exportedAt:new Date().toISOString()};}
+  function exportJSON(){const doc=buildDoc();if(!doc)return;
+    const blob=new Blob([JSON.stringify(doc,null,2)],{type:"application/json"});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download="idbm_layout.json";a.click();URL.revokeObjectURL(a.href);
+    toast(`Exported ${doc.instances.length} IDBMs · ${doc.lanes.length} lanes · ${doc.vehicles.length} vehicles · ${doc.objects.length} objects`);}
+  function runInViewer(){if(!idbms.length){toast('Nothing to run yet — add IDBMs first (or use ⚙ Parametric for a whole facility in one go)');return;}
+    const doc=buildDoc();if(!doc)return;                                                         // hand the design straight to the live sim (sticky; __layoutReset() in the viewer returns to built-in)
+    try{localStorage.setItem('tz-layout',JSON.stringify({ts:Date.now(),name:'configurator '+new Date().toISOString().slice(11,16),data:doc}));}
+    catch(e){toast('Hand-off failed: '+e.message);return;}
+    toast(`Running ${doc.instances.length} IDBMs in the Viewer…`);
+    setTimeout(()=>{location.href='viewer_3d.html?l='+Date.now();},450);}
+
+  $('add').onclick=addIdbm;$('rot').onclick=rotate;$('setlen').onclick=setLen;$('arr').onclick=arrayBuild;
+  $('dup').onclick=duplicate;$('del').onclick=del;$('cpz').onclick=copyToZ;$('exp').onclick=exportJSON;$('runV').onclick=runInViewer;$('addCrane').onclick=()=>addVehicle('crane');$('addShuttle').onclick=()=>addVehicle('shuttle');$('addAgv').onclick=()=>addVehicle('agv');$('addRack').onclick=()=>addVehicle('rack');$('addMezz').onclick=()=>addVehicle('mezzanine');$('addObstacle').onclick=()=>addVehicle('obstacle');$('addZone').onclick=()=>addVehicle('zone');$('fboIn').onchange=()=>{if((parseFloat($('fboIn').value)||0)<210)$('fboIn').value=210;};
+  function loadFile(e){const f=e.target.files&&e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{toast(window.__cfgLoad(JSON.parse(rd.result)));}catch(err){toast('Bad JSON: '+err.message);}};rd.readAsText(f);e.target.value='';}
+  $('ld').onclick=()=>$('ldFile').click();$('ldFile').onchange=loadFile;
+  addEventListener('keydown',e=>{if(e.key==='Escape'&&routeMode){routeMode=false;routeVeh=null;render();refresh();}});
+  $('showOthers').onchange=render;
+  addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
+    if(e.key==='Delete'||e.key==='Backspace')del();else if(e.key==='r'||e.key==='R')rotate();else if(e.key==='a'||e.key==='A')addIdbm();});
+
+  function refresh(){refitAll();saveWip();
+    if(!(drag&&drag.mode==='movevehicle')){computeSnaps();vehicles.forEach(v=>{const C=VREG[v.type];if(C&&C.category==='vehicle')v._collide=mdCollides(v);});}   // snap lines + collision flags depend only on IDBMs/other MDs — kept cached while dragging one vehicle
+    $('nIdbm').textContent=idbms.length;$('nLane').textContent=new Set(idbms.filter(d=>d.laneId).map(d=>d.laneId)).size;
+    $('nSel').textContent=sel.size;$('aZ').textContent=activeZ;
+    // level chips
+    const zs=[...new Set(idbms.map(d=>d.z))].sort((a,b)=>a-b);if(!zs.includes(activeZ))zs.push(activeZ);zs.sort((a,b)=>a-b);
+    const chips=$('chips');chips.innerHTML='';
+    zs.forEach(z=>{const c=document.createElement('div');c.className='chip'+(z===activeZ?' active':'');c.textContent=z+' mm';
+      c.onclick=()=>{activeZ=z;sel.clear();render();refresh();};chips.appendChild(c);});
+    // props
+    const body=$('propsBody');
+    if(selVeh!=null){const v=vehicles.find(x=>x.id===selVeh),C=v&&VREG[v.type];if(v&&C){const ps=(C.schemaType&&C.schemaType.params)||[];
+      let html=`<div class="prow"><span>${C.category||'object'}</span><b>${v.type.toUpperCase()}-${String(v.id).padStart(3,'0')}</b></div>`;
+      ps.forEach(p=>{const val=v.params[p.key]!=null?v.params[p.key]:p.default,lbl=p.key.replace(/([a-z])([A-Z])/g,'$1 $2').replace(/\./g,' ').toLowerCase(),tip=((p.desc||'')+(p.units?' ('+p.units+')':'')).replace(/"/g,'&quot;');
+        if(p.type==='enum'){html+=`<div class="prow" title="${tip}"><span>${lbl}</span><select class="num w" data-pk="${p.key}">${(p.options||[]).map(o=>`<option${o==val?' selected':''}>${o}</option>`).join('')}</select></div>`;}
+        else{html+=`<div class="prow" title="${tip}"><span>${lbl}</span><input class="num w" type="number" data-pk="${p.key}" value="${val}" title="${tip}"></div>`;}});
+      if(C.category==='vehicle')html+=`<div class="prow"><span>travel mm</span><input class="num w" id="vTravel" type="number" value="${Math.round(v.travel||0)}"></div><div class="prow"><span>auto-fit</span><input id="vAuto" type="checkbox" ${v.travelAuto?'checked':''}></div>`;
+      if(v.type==='agv'&&v._status)html+=`<div class="prow"><span>corridor</span><b style="color:${v._status.clear?'#2ea043':'#e0564a'}">${v._status.routed?'routed ✓':(v._status.clear?'clear ✓':(v._status.hits+' in path'+(v._status.outOfZone?' · out of zone':'')))}</b></div>`;
+      if(v.type==='agv'){const tk=v.track||[],last=tk[tk.length-1];
+        html+=`<div class="prow"><span>track</span><b>${tk.length} piece${tk.length===1?'':'s'} · min R ${minRadius(v)} mm</b></div>`;
+        html+=`<div class="prow" title="Build the AGV circuit from track pieces: append stretchable straights and 90° turns. Turn radius is clamped to the AGV's size; the shaded band is the swept footprint."><span>add piece</span><span><button class="ui" id="tStr">+ Straight</button> <button class="ui" id="tL">↰ L</button> <button class="ui" id="tR">↱ R</button></span></div>`;
+        if(last&&last.t==='s')html+=`<div class="prow"><span>last straight mm</span><input class="num w" id="tEdit" type="number" value="${Math.round(last.len)}"></div>`;
+        else if(last)html+=`<div class="prow"><span>last turn R mm</span><input class="num w" id="tEdit" type="number" value="${Math.round(Math.max(minRadius(v),last.r))}"></div>`;
+        html+=`<div class="prow"><span>track edit</span><span><button class="ui" id="tUndo">undo</button> <button class="ui" id="tClr">clear</button></span></div>`;
+        html+=`<div class="prow" title="Mark where the AGV can stop to pick up or drop off products — placed at the current end of the track."><span>stops</span><span><button class="ui" id="tPick">+ Pick-up</button> <button class="ui" id="tDrop">+ Drop-off</button>${(v.stops&&v.stops.length)?` <button class="ui" id="tStopClr">clear ${v.stops.length}</button>`:''}</span></div>`;}
+      html+=`<div class="prow"><span>Position</span><b>${Math.round(v.cx)}, ${Math.round(v.cy)}</b></div><div class="prow"><span>Type</span><span class="pill">${C.category||''} · ${v.type}</span></div>`;
+      body.innerHTML=html;
+      body.querySelectorAll('[data-pk]').forEach(el=>{el.onchange=()=>{const k=el.getAttribute('data-pk'),isSel=el.tagName==='SELECT',num=parseFloat(el.value);v.params[k]=(isSel||isNaN(num))?el.value:num;render();refresh();};});
+      const tE=document.getElementById('vTravel');if(tE)tE.onchange=()=>{v.travel=Math.max(0,parseFloat(tE.value)||0);v.travelAuto=false;render();refresh();};
+      const aE=document.getElementById('vAuto');if(aE)aE.onchange=()=>{v.travelAuto=aE.checked;if(aE.checked)fitTravel(v);render();refresh();};
+      const tappend=seg=>{v.track=v.track||[];v.track.push(seg);render();refresh();};
+      {const e=$('tStr');if(e)e.onclick=()=>tappend({t:'s',len:3000});}
+      {const e=$('tL');if(e)e.onclick=()=>tappend({t:'L',r:minRadius(v)});}
+      {const e=$('tR');if(e)e.onclick=()=>tappend({t:'R',r:minRadius(v)});}
+      {const e=$('tUndo');if(e)e.onclick=()=>{if(v.track&&v.track.length)v.track.pop();render();refresh();};}
+      {const e=$('tClr');if(e)e.onclick=()=>{v.track=[];render();refresh();};}
+      {const e=$('tEdit');if(e)e.onchange=()=>{const last=v.track&&v.track[v.track.length-1];if(!last)return;const val=parseFloat(e.value)||0;if(last.t==='s')last.len=Math.max(300,val);else last.r=Math.max(minRadius(v),val);render();refresh();};}
+      {const e=$('tPick');if(e)e.onclick=()=>{v.stops=v.stops||[];v.stops.push({seg:(v.track||[]).length-1,kind:'P'});render();refresh();};}
+      {const e=$('tDrop');if(e)e.onclick=()=>{v.stops=v.stops||[];v.stops.push({seg:(v.track||[]).length-1,kind:'D'});render();refresh();};}
+      {const e=$('tStopClr');if(e)e.onclick=()=>{v.stops=[];render();refresh();};}
+      return;}}
+    if(sel.size===0){body.innerHTML='<div class="empty">Add an IDBM, set length, then <b>Build</b> an array. Marquee-drag to select; <b>Copy sel → Z</b> stacks a shelf.</div>';return;}
+    if(sel.size>1){body.innerHTML=`<div class="prow"><span>Selected</span><b>${sel.size} IDBMs</b></div><div class="prow"><span>Actions</span><span>Dup · Lane · Copy→Z · Del</span></div>`;return;}
+    const d=idbms.find(x=>sel.has(x.id)),e=ends(d),f=n=>Math.round(n);$('lenIn').value=Math.round(d.L);
+    body.innerHTML=`<div class="prow"><span>ID</span><b>IDBM-${String(d.id).padStart(4,'0')}</b></div>
+      <div class="prow"><span>Length</span><b>${f(d.L)} mm</b></div>
+      <div class="prow"><span>Z (level)</span><b>${f(d.z)} mm</b></div>
+      <div class="prow"><span>Datum A</span><b>${f(e.a[0])}, ${f(e.a[1])}</b></div>
+      <div class="prow"><span>Datum B</span><b>${f(e.b[0])}, ${f(e.b[1])}</b></div>
+      <div class="prow"><span>Lane</span><b>${d.laneId?('LANE-'+String(d.laneId).padStart(2,'0')):'—'}</b></div>
+      <div class="prow"><span>Coord source</span><span class="pill">design</span></div>`;}
+
+  window.__snaps=()=>snapLines.map(L=>({gap:L.gap,wide:L.wide,cx:Math.round(L.cx),cy:Math.round(L.cy),len:Math.round(Math.hypot(L.P1[0]-L.P0[0],L.P1[1]-L.P0[1]))}));
+  window.__clearVeh=()=>{vehicles=[];selVeh=null;render();return 'cleared';};
+  window.__vehInfo=()=>{refresh();return vehicles.map(v=>({id:v.id,type:v.type,cx:Math.round(v.cx),cy:Math.round(v.cy),wide:v.params&&v.params['bed.laneCount'],collide:v._collide?v._collide.what:null}));};
+  window.__trackInfo=()=>{const v=vehicles.find(x=>x.type==='agv');if(!v)return 'no agv';const d=agvDims(v),T=buildTrack(v);
+    return {body:{lx:Math.round(d.lx),wy:Math.round(d.wy)},minR:minRadius(v),segs:(v.track||[]),
+      centreline:T.cl.map(s=>s.type==='line'?{line:[s.a.map(Math.round),s.b.map(Math.round)]}:{arc:{c:s.c.map(Math.round),r:Math.round(s.r),turn:Math.round((s.a1-s.a0)*180/Math.PI)}}),
+      end:T.end.map((n,i)=>i<2?Math.round(n):Math.round(n*180/Math.PI)),sweepPolys:T.sweep.length,
+      stops:(v.stops||[]).map(p=>({kind:p.kind,seg:p.seg,at:(p.seg<0||!T.ends[p.seg])?[Math.round(v.cx),Math.round(v.cy)]:[Math.round(T.ends[p.seg].x),Math.round(T.ends[p.seg].y)]}))};};
+  window.__testSnap=(vid,rx,ry)=>{const v=vehicles.find(x=>x.id===vid);if(!v)return 'no veh';const r=snapVehicle(v,rx,ry);render();return JSON.stringify({snappedToLine:r,cx:Math.round(v.cx),cy:Math.round(v.cy),yawDeg:Math.round(v.yaw*180/Math.PI)});};
+  window.__cfgLoad=function(data){   // debug: import an exported layout (instances+vehicles) to test snap lines
+    idbms=[];nextId=1;
+    (data.instances||[]).forEach(I=>{const A=I.datum.endA,B=I.datum.endB;
+      idbms.push({id:nextId++,cx:(A[0]+B[0])/2,cy:(A[1]+B[1])/2,z:0,ang:Math.atan2(B[1]-A[1],B[0]-A[0]),L:Math.hypot(B[0]-A[0],B[1]-A[1]),laneId:null});});
+    vehicles=[];nextVeh=1;selVeh=null;
+    (data.vehicles||[]).forEach(V=>{const t=V.typeRef||V.type;if(!VREG[t])return;
+      vehicles.push({id:nextVeh++,type:t,cx:V.pose.position[0],cy:V.pose.position[1],z:0,yaw:(V.pose&&V.pose.yaw)||0,
+        travel:+V.travel||0,travelMid:+V.travelMid||0,travelAuto:!(+V.travel>0),params:Object.assign({},V.params),route:V.route||null,track:V.track||[],stops:V.stops||[]});});
+    activeZ=0;
+    if(idbms.length){let a=1e9,b=-1e9,c=1e9,d=-1e9;idbms.forEach(g=>{a=Math.min(a,g.cx);b=Math.max(b,g.cx);c=Math.min(c,g.cy);d=Math.max(d,g.cy);});
+      scale=Math.max(0.006,Math.min(0.5,Math.min(CW/(b-a+8000),CH/(d-c+8000))));const mx=(a+b)/2,my=(c+d)/2;panX=-mx*scale;panY=my*scale;}
+    sel.clear();render();refresh();return 'loaded '+idbms.length+' IDBMs, '+vehicles.length+' MDs, '+snapLines.length+' snap lines';};
+  // ---- SESSION AUTOSAVE: the editing session survives a toggle to the Viewer and back (round-trip) ----
+  let _wipT;
+  function saveWip(){ clearTimeout(_wipT); _wipT=setTimeout(function(){ try{ localStorage.setItem('tz-cfg-wip', JSON.stringify({
+    idbms:idbms, vehicles:vehicles, nextId:nextId, nextLane:nextLane, nextVeh:nextVeh, activeZ:activeZ,
+    fbo:($('fboIn')&&$('fboIn').value)||310, ts:Date.now() })); }catch(e){} }, 400); }
+  function restoreWip(){ try{ const w=JSON.parse(localStorage.getItem('tz-cfg-wip')||'null'); if(!w||!Array.isArray(w.idbms)||!w.idbms.length)return false;
+    const vs=Array.isArray(w.vehicles)?w.vehicles:[];
+    idbms=w.idbms; vehicles=vs; nextLane=w.nextLane||1; activeZ=w.activeZ||0;
+    nextId=w.nextId||(w.idbms.reduce(function(m,d){return Math.max(m,d.id||0);},0)+1);
+    nextVeh=w.nextVeh||(vs.reduce(function(m,v){return Math.max(m,v.id||0);},0)+1);
+    if(w.fbo&&$('fboIn'))$('fboIn').value=w.fbo; sel.clear(); selVeh=null; return true; }catch(e){ idbms=[]; vehicles=[]; return false; } }
+  window.__cfgNew=function(){ localStorage.removeItem('tz-cfg-wip'); idbms=[]; vehicles=[]; nextId=1; nextLane=1; nextVeh=1; activeZ=0; sel.clear(); selVeh=null; addIdbm(); render(); refresh(); return 'new layout'; };
+  if(!restoreWip()){                                                                   // priority: native autosave → last layout sent to the Viewer → fresh single IDBM
+    let seeded=false; idbms=[]; vehicles=[];                                            // clean slate before importing, so a failed restore can never append-double
+    try{ const tl=JSON.parse(localStorage.getItem('tz-layout')||'null');
+      if(tl&&tl.data&&tl.data.instances&&tl.data.instances.length){ window.__cfgLoad(tl.data); seeded=true; } }catch(e){}
+    if(!seeded)addIdbm();
+  }
+  render();refresh();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tetrisize Platform — Benchmark</title>
+<link rel="stylesheet" href="ui_kit.css">
+<script>window.TZ_SCREEN='benchmark';</script>
+<script src="ui_kit.js"></script>
+<style>
+  *{box-sizing:border-box} html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  body{background:radial-gradient(130% 130% at 50% 0%,var(--tz-bg1),var(--tz-bg2));color:var(--tz-ink)}
+  #wrap{max-width:1280px;margin:0 auto;padding:74px 22px 30px;display:grid;grid-template-columns:1fr;gap:14px}
+  .pane{padding:15px 17px}
+  .pane h3{margin:0 0 10px;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tz-muted)}
+  #offline{display:none;padding:12px 16px;color:var(--tz-orange);font-weight:700;font-size:13px}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{cursor:pointer;font-size:10px;font-weight:700;padding:6px 11px;border-radius:8px;border:1px solid var(--tz-brd);background:var(--tz-panel-solid);color:var(--tz-ink)}
+  .seg button:hover{border-color:var(--tz-accent)}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--tz-muted);text-align:right;padding:4px 7px;border-bottom:1px solid var(--tz-brd)}
+  th:first-child,td:first-child{text-align:left}
+  td{padding:5px 7px;border-bottom:1px solid var(--tz-brd);font-variant-numeric:tabular-nums;text-align:right}
+  tr.sel td{background:rgba(0,174,239,.10)}
+  td .pick{cursor:pointer;font-size:9px;font-weight:700;padding:2px 7px;border-radius:6px;border:1px solid var(--tz-brd);background:transparent;color:var(--tz-ink)}
+  .delta-good{color:var(--tz-green,#3F9C35);font-weight:700}.delta-bad{color:#e23c4b;font-weight:700}
+  #prog{display:none;padding:10px 14px;font-size:12px}
+  #prog .bar{height:9px;border-radius:5px;background:var(--tz-brd);overflow:hidden;margin-top:6px}
+  #prog .bar i{display:block;height:100%;background:var(--tz-cyan,#00AEEF)}
+  canvas.spark{background:transparent}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="offline" class="tz-panel">SIM OFFLINE — open the Viewer 3D tab; benchmarks run inside the live sim and report here.</div>
+  <div id="prog" class="tz-panel"><b id="pLbl">—</b><div class="bar"><i id="pBar" style="width:0%"></i></div></div>
+  <div class="pane tz-panel">
+    <h3>Run a benchmark — the proposed-project proving ground</h3>
+    <div class="seg">
+      <button data-p="throughput" title="Fresh boot, fast arrivals, all cars on — what can this layout move?">THROUGHPUT MAX</button>
+      <button data-p="saturation" title="Gate closed until ~100% full, then open — fill rate and drain race">SATURATION + DRAIN</button>
+      <button data-p="ordersla" title="A 4-pallet order every 10 engine-min — order completion latency">ORDER-PULL SLA</button>
+      <button data-p="degraded" title="CAR-2 faults at 10 min, cleared at 60 — resilience cost">DEGRADED (1 CAR OUT)</button>
+    </div>
+    <div style="font-size:10.5px;color:var(--tz-muted);margin-top:8px">Each preset reboots the sim to a comparable seeded state, runs at max step rate, samples every engine-minute, and files the run below. Run any preset twice with different commissioning values (latches, gap, speeds) to A/B a tuning decision.</div>
+  </div>
+  <div class="pane tz-panel">
+    <h3>Runs — pick two to compare (A then B)</h3>
+    <table><thead><tr><th>Run</th><th>When</th><th>Dur (es)</th><th>In/h</th><th>Out/h</th><th>Dwell s̄</th><th>p95</th><th>Peak %</th><th>Util C1·C2·C3</th><th>Churn</th><th>Orders (lat s̄)</th><th></th></tr></thead>
+    <tbody id="runs"></tbody></table>
+  </div>
+  <div class="pane tz-panel" id="cmpPane" style="display:none">
+    <h3>A / B compare</h3>
+    <table><thead><tr><th>KPI</th><th id="cA">A</th><th id="cB">B</th><th>Δ (B−A)</th></tr></thead><tbody id="cmp"></tbody></table>
+    <div style="display:flex;gap:24px;margin-top:12px;flex-wrap:wrap">
+      <div><div style="font-size:9px;color:var(--tz-muted);margin-bottom:3px">OUTBOUND (cumulative) — A cyan · B gold</div><canvas id="spOut" class="spark" width="420" height="80"></canvas></div>
+      <div><div style="font-size:9px;color:var(--tz-muted);margin-bottom:3px">ARRAY-2 OCCUPANCY % — A cyan · B gold</div><canvas id="spOcc" class="spark" width="420" height="80"></canvas></div>
+    </div>
+    <button class="pick" id="csvBtn" style="margin-top:10px;padding:5px 12px">EXPORT SELECTED AS CSV</button>
+  </div>
+</div>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  function cmd(o){ o.ts=Date.now(); try{localStorage.setItem('tz-cmd',JSON.stringify(o));}catch(e){} }
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+  document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>cmd({benchPreset:b.getAttribute('data-p')}));
+  let sel=[];
+  function runs(){ try{ return JSON.parse(localStorage.getItem('tz-bench')||'[]'); }catch(e){ return []; } }
+  function spark(cv,sa,sb,key,scale){ const c=cv.getContext('2d'); c.clearRect(0,0,cv.width,cv.height);
+    const draw=(s,col)=>{ if(!s||!s.samples.length)return; const xs=s.samples, mx=Math.max(...xs.map(p=>p[key]))||1;
+      c.strokeStyle=col; c.lineWidth=1.6; c.beginPath();
+      xs.forEach((p,i)=>{ const x=i/(xs.length-1||1)*(cv.width-4)+2, y=cv.height-3-(p[key]/(scale||mx))*(cv.height-8);
+        i?c.lineTo(x,y):c.moveTo(x,y); }); c.stroke(); };
+    const mx=Math.max(sa?Math.max(...sa.samples.map(p=>p[key])):1, sb?Math.max(...sb.samples.map(p=>p[key])):1)||1;
+    draw(sa,'#00AEEF'); draw(sb,'#EAAB00'); return mx; }
+  function fmtWhen(t){ const d=new Date(t); return d.toLocaleTimeString().slice(0,5); }
+  function render(){ const R=runs();
+    $('runs').innerHTML=R.length?R.map((r,i)=>{ const s=r.summary, si=sel.indexOf(i);
+      return '<tr class="'+(si>=0?'sel':'')+'"><td><b>'+esc(r.label)+'</b>'+(r.spec.preset?' <span style="color:var(--tz-muted)">·'+r.spec.preset+'</span>':'')+
+      '<div style="color:var(--tz-muted);font-size:9.5px">latch '+Math.round((r.spec.latch2||0)*100)+'/'+Math.round((r.spec.latch3||0)*100)+'% · gap '+r.spec.gap+' · spawn '+r.spec.spawnSec+'s</div></td>'+
+      '<td>'+fmtWhen(r.savedAt)+'</td><td>'+s.dur+'</td><td>'+s.inHr+'</td><td>'+s.outHr+'</td><td>'+(s.dwellMean==null?'—':s.dwellMean)+'</td><td>'+(s.dwellP95==null?'—':s.dwellP95)+'</td>'+
+      '<td>'+s.peakOcc+'</td><td>'+s.util.join('·')+'</td><td>'+s.churn+'</td><td>'+(s.orders||0)+(s.orderLatMean?(' ('+s.orderLatMean+')'):'')+'</td>'+
+      '<td><button class="pick" data-i="'+i+'">'+(si===0?'A ✓':si===1?'B ✓':'PICK')+'</button></td></tr>'; }).join('')
+      :'<tr><td colspan="12" style="color:var(--tz-muted);text-align:left">no runs yet — fire a preset above (the viewer must be open)</td></tr>';
+    document.querySelectorAll('#runs .pick').forEach(b=>b.onclick=()=>{ const i=+b.getAttribute('data-i');
+      const at=sel.indexOf(i); if(at>=0)sel.splice(at,1); else { sel.push(i); if(sel.length>2)sel.shift(); } render(); });
+    if(sel.length===2){ const A=R[sel[0]],B=R[sel[1]]; $('cmpPane').style.display='block';
+      $('cA').textContent='A · '+A.label; $('cB').textContent='B · '+B.label;
+      const rows=[['Inbound /h','inHr',1],['Outbound /h','outHr',1],['Dwell mean (s)','dwellMean',-1],['Dwell p95 (s)','dwellP95',-1],['Peak occupancy %','peakOcc',1],['Head-of-line wait','waiting',-1],['Lane churn','churn',-1],['Orders done','orders',1],['Order latency s̄','orderLatMean',-1]];
+      $('cmp').innerHTML=rows.map(([lab,k,good])=>{ const a=A.summary[k],b=B.summary[k];
+        if(a==null&&b==null)return ''; const d=(b||0)-(a||0), cls=d===0?'':((d*good>0)?'delta-good':'delta-bad');
+        return '<tr><td>'+lab+'</td><td>'+(a==null?'—':a)+'</td><td>'+(b==null?'—':b)+'</td><td class="'+cls+'">'+(d>0?'+':'')+Math.round(d*10)/10+'</td></tr>'; }).join('');
+      spark($('spOut'),A,B,'out'); spark($('spOcc'),A,B,'o2',100);
+      $('csvBtn').onclick=()=>{ const r=A; const head='t,inn,out,srt,o1,o2,wait,formed,dissolved,minRun,free2,busyC1,busyC2,busyC3,orders\n';
+        const csv=head+[A,B].map(x=>x.samples.map(p=>[p.t,p.inn,p.out,p.srt,p.o1,p.o2,p.wait,p.frm,p.dis,p.run,p.free2].concat(p.busy,[p.ord]).join(',')).join('\n')).join('\n\n');
+        const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='tz-bench.csv'; a.click(); }; }
+    else $('cmpPane').style.display='none';
+    let live=null; try{ live=JSON.parse(localStorage.getItem('tz-live')||'null'); }catch(e){}
+    const stale=!live||Date.now()-live.t>6000; $('offline').style.display=stale?'block':'none';
+    if(live&&live.bench){ $('prog').style.display='block'; $('pLbl').textContent='RUNNING — '+live.bench.label; $('pBar').style.width=Math.round(live.bench.prog*100)+'%'; }
+    else $('prog').style.display='none';
+  }
+  render(); setInterval(render,1200);
+})();
+</script>
+</body>
+</html>

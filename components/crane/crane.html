@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tetrisize — Crane Car (ASRS)</title>
+<!--
+  CRANE CAR (ASRS STACKER) — standalone artifact.  Contract lives in crane.js (window.TZ_CRANE).
+  Built from _TEMPLATE_component.html: the shared harness below is verbatim EXCEPT two clearly
+  marked showcase-only conveniences (forceable LOD + exposed render) that do NOT affect crane.js,
+  so the main session integrates the contract object with zero rework.
+  Form & dimensions per Mike (2026-06-05); a few secondary defaults still assumed — see crane/spec.md.
+  Conventions: schema in mm, renderer in metres (M=0.001), Z-up, right-handed, +Y up.
+-->
+<style>
+  :root{--bg1:#eef2f7;--bg2:#dbe4f0;--ink:#1f2a37;--muted:#5b6b7c;--panel:rgba(255,255,255,0.9);--brd:rgba(20,40,70,0.12);--accent:#2b6cff;--shadow:0 8px 30px rgba(20,40,70,0.12)}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink)}
+  #app{position:fixed;inset:0;background:radial-gradient(130% 130% at 50% 0%,var(--bg1),var(--bg2))}
+  #scene{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}#scene:active{cursor:grabbing}
+  .panel{position:absolute;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--brd);border-radius:13px;box-shadow:var(--shadow);padding:13px 15px;user-select:none}
+  #title{top:16px;left:16px;max-width:330px}#title h1{margin:0;font-size:16px}#title h1 b{color:var(--accent)}
+  #title p{margin:4px 0 0;font-size:11.5px;color:var(--muted);line-height:1.45}
+  #title .warn{margin-top:6px;font-size:11px;font-weight:600;color:#b25400}
+  #info{top:16px;right:16px;width:230px}
+  #info .lbl{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .irow{display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px solid rgba(20,40,70,.07)}
+  .irow:first-of-type{border-top:none}.irow span:first-child{color:var(--muted)}.irow b{font-variant-numeric:tabular-nums}
+  #ctl{bottom:16px;left:16px;display:flex;gap:7px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 32px)}
+  #ctl .grp{display:flex;gap:5px;align-items:center;padding-right:7px;border-right:1px solid var(--brd)}
+  #ctl .grp:last-child{border-right:none}
+  button.ui{cursor:pointer;border:1px solid var(--brd);background:#fff;color:var(--ink);font-size:12px;font-weight:600;padding:7px 10px;border-radius:9px}
+  button.ui:hover{border-color:var(--accent);color:var(--accent)}
+  button.ui.on{border-color:var(--accent);color:#fff;background:var(--accent)}
+  #hint{bottom:16px;left:50%;transform:translateX(-50%);font-size:11.5px;color:var(--muted);border-radius:999px;padding:7px 14px}#hint b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="scene"></canvas>
+  <div class="panel" id="title"><h1>TETRISIZE <b>Crane Car (ASRS)</b></h1>
+    <p>Scalable twin-mast stacker: masts rise from the floor on a steel floor rail + overhead monorail; IDBMs ride two support beams (no deck) and hoist from the floor lane to any height. Try <b>Animate lift</b> / <b>Animate travel</b>. Drag orbit · scroll zoom · right-drag pan.</p>
+    <p class="warn">2026-06-05 cleanup: low base beam (≤125), floor rail + overhead monorail, IDBM long body now rests on the support beams. See spec.md.</p></div>
+  <div class="panel" id="info"><div class="lbl">Crane (front) — mm</div><div id="infoBody"></div></div>
+  <div class="panel" id="ctl">
+    <div class="grp"><button class="ui" id="reset">Reset view</button></div>
+    <div class="grp"><button class="ui" id="liftDn">▼ Level</button><button class="ui" id="liftUp">▲ Level</button><button class="ui" id="anim">Animate lift</button></div>
+    <div class="grp"><button class="ui" id="travL">◀</button><button class="ui" id="travR">▶</button><button class="ui" id="animTrav">Animate travel</button></div>
+    <div class="grp"><button class="ui" id="lodAuto">Auto LOD</button><button class="ui" id="lodFull">Full</button><button class="ui" id="lodMed">Med</button><button class="ui" id="lodSimple">Simple</button></div>
+  </div>
+  <div class="panel" id="hint"><b>Drag</b> orbit · <b>Scroll</b> zoom · <b>Right-drag</b> pan</div>
+</div>
+
+<script>
+/* =================== SHARED HARNESS (from _TEMPLATE_component.html) ====================== */
+/* Verbatim except two lines marked  // [showcase]  — they do not affect crane.js.          */
+const TZ = (function(){
+  const cv=document.getElementById('scene'),ctx=cv.getContext('2d'),M=0.001;
+  let CW=0,CH=0,ORX=0,ORY=0,DPR=Math.min(window.devicePixelRatio||1,2);
+  const cam={az:0.86,el:0.62,S:30,zoom:1,panX:0,panY:0};
+  let CX=0,CY=0,CZ=0, scene=[], registry={}, dragging=false,zT;
+  function resize(){CW=cv.clientWidth;CH=cv.clientHeight;cv.width=CW*DPR;cv.height=CH*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);ORX=CW*.5;ORY=CH*.5;}
+  addEventListener('resize',()=>{resize();render();});resize();
+  function project(x,y,z){const dx=x-CX,dy=CY-y,dz=z-CZ,ca=Math.cos(cam.az),sa=Math.sin(cam.az);   // metres, Z-up, +Y up
+    const rx=dx*ca-dy*sa,G=dx*sa+dy*ca,sy=G*Math.sin(cam.el)-dz*Math.cos(cam.el);
+    return [ORX+rx*cam.S*cam.zoom+cam.panX,ORY+sy*cam.S*cam.zoom+cam.panY];}
+  function depth(x,y){const dx=x-CX,dy=CY-y;return dx*Math.sin(cam.az)+dy*Math.cos(cam.az);}
+  const shade=(hex,f)=>{const r=(hex>>16)&255,g=(hex>>8)&255,b=hex&255,m=v=>Math.max(0,Math.min(255,v*f|0));return `rgb(${m(r)},${m(g)},${m(b)})`;};
+  function quad(p,fill){ctx.beginPath();ctx.moveTo(p[0][0],p[0][1]);for(let i=1;i<4;i++)ctx.lineTo(p[i][0],p[i][1]);ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle='rgba(22,32,48,0.14)';ctx.lineWidth=1;ctx.stroke();}
+  // oriented box (metres): centre cx,cy ; zb..zt ; along/across unit vectors ; half-len/half-wid
+  function obox(cx,cy,zb,zt,al,ac,hl,hw,color){const c=(s,t,z)=>project(cx+al[0]*s+ac[0]*t,cy+al[1]*s+ac[1]*t,z);
+    const b00=c(-hl,-hw,zb),b10=c(hl,-hw,zb),b11=c(hl,hw,zb),b01=c(-hl,hw,zb),t00=c(-hl,-hw,zt),t10=c(hl,-hw,zt),t11=c(hl,hw,zt),t01=c(-hl,hw,zt);
+    const along=depth(cx+al[0]*hl,cy+al[1]*hl)>depth(cx-al[0]*hl,cy-al[1]*hl), across=depth(cx+ac[0]*hw,cy+ac[1]*hw)>depth(cx-ac[0]*hw,cy-ac[1]*hw);
+    quad(along?[b10,b11,t11,t10]:[b00,b01,t01,t00],shade(color,.80));quad(across?[b01,b11,t11,t01]:[b00,b10,t10,t00],shade(color,.64));quad([t00,t10,t11,t01],shade(color,1));}
+
+  // ---- shared IDBM bed helper (metres) — every vehicle bed should use this for visual consistency ----
+  function idbm(cx,cy,cz,len,yaw,lod){const al=[Math.cos(yaw),Math.sin(yaw)],ac=[-al[1],al[0]],hL=len/2,EL=.32,EHW=.15,BHW=.14,ET=.20,DT=.08,BB=.115,TF=.04;
+    if(lod==='simple'){obox(cx,cy,cz,cz+ET,al,ac,hL,EHW,0x6f7884);return;}
+    const eOff=hL-EL/2,bHL=Math.max(0,hL-EL),ctr=o=>[cx+al[0]*o,cy+al[1]*o];
+    const end=o=>{const c=ctr(o);if(lod==='full'){obox(c[0],c[1],cz,cz+DT,al,ac,EL/2,EHW,0x2e333a);obox(c[0],c[1],cz+DT,cz+ET,al,ac,EL/2,EHW,0xe9ecef);}else obox(c[0],c[1],cz,cz+ET,al,ac,EL/2,EHW,0xe0e4e9);};
+    const body=()=>{if(bHL>0)obox(cx,cy,cz+BB,cz+ET,al,ac,bHL,BHW,0x33383f);};
+    [{d:depth(ctr(-eOff)[0],ctr(-eOff)[1]),f:()=>end(-eOff)},{d:depth(cx,cy),f:body},{d:depth(ctr(eOff)[0],ctr(eOff)[1]),f:()=>end(eOff)}].sort((a,b)=>a.d-b.d).forEach(p=>p.f());
+    const a0=-(hL-TF),a1=hL-TF,zt=cz+ET+.001,c=(s,t)=>project(cx+al[0]*s+ac[0]*t,cy+al[1]*s+ac[1]*t,zt);
+    quad([c(a0,-BHW),c(a1,-BHW),c(a1,BHW),c(a0,BHW)],shade(0x434b56,1));}
+
+  const api={project,depth,obox,quad,shade,M,idbm,get ctx(){return ctx;},cam};
+
+  function bboxAll(){let mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];scene.forEach(i=>{const b=registry[i.type].bbox(i);for(let k=0;k<3;k++){mn[k]=Math.min(mn[k],b.min[k]);mx[k]=Math.max(mx[k],b.max[k]);}});return{mn,mx};}
+  function fit(){const {mn,mx}=bboxAll();CX=(mn[0]+mx[0])/2;CY=(mn[1]+mx[1])/2;CZ=(mn[2]+mx[2])/2;
+    const ca=Math.cos(cam.az),sa=Math.sin(cam.az),se=Math.sin(cam.el),ce=Math.cos(cam.el);let X0=1e9,X1=-1e9,Y0=1e9,Y1=-1e9;
+    for(const x of[mn[0],mx[0]])for(const y of[mn[1],mx[1]])for(const z of[mn[2],mx[2]]){const dx=x-CX,dy=CY-y,dz=z-CZ,rx=(dx*ca-dy*sa)*cam.S,sy=((dx*sa+dy*ca)*se-dz*ce)*cam.S;X0=Math.min(X0,rx);X1=Math.max(X1,rx);Y0=Math.min(Y0,sy);Y1=Math.max(Y1,sy);}
+    cam.zoom=0.80*Math.min(CW/((X1-X0)||1),CH/((Y1-Y0)||1));cam.panX=cam.panY=0;}
+  function render(){ctx.clearRect(0,0,CW,CH);
+    // ground grid
+    ctx.strokeStyle='rgba(120,140,165,0.22)';ctx.lineWidth=1;ctx.beginPath();const r=10;
+    for(let x=Math.floor(CX-r);x<=CX+r;x++){const a=project(x,CY-r,0),b=project(x,CY+r,0);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}
+    for(let y=Math.floor(CY-r);y<=CY+r;y++){const a=project(CX-r,y,0),b=project(CX+r,y,0);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}
+    ctx.stroke();
+    const lod=window.__forceLOD||(dragging?'simple':(scene.length>200?'med':'full'));   // [showcase] honor forced LOD
+    const order=scene.map((i,k)=>{const b=registry[i.type].bbox(i),mid=[(b.min[0]+b.max[0])/2,(b.min[1]+b.max[1])/2];return[depth(mid[0],mid[1]),k];}).sort((a,b)=>a[0]-b[0]);
+    order.forEach(o=>{const i=scene[o[1]];registry[i.type].draw3D(api,i,lod);});}
+  // controls
+  let drag=null;
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+  cv.addEventListener('pointerdown',e=>{try{cv.setPointerCapture(e.pointerId);}catch(_){}drag={x:e.clientX,y:e.clientY,btn:e.button};dragging=true;});
+  cv.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;
+    if(drag.btn===2||e.shiftKey){cam.panX+=dx;cam.panY+=dy;}else{cam.az-=dx*.01;cam.el=Math.max(.08,Math.min(1.45,cam.el-dy*.005));}render();});
+  cv.addEventListener('pointerup',()=>{drag=null;dragging=false;render();});
+  cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,wx=(mx-ORX-cam.panX)/(cam.S*cam.zoom),wy=(my-ORY-cam.panY)/(cam.S*cam.zoom);
+    cam.zoom=Math.max(.05,Math.min(60,cam.zoom*(e.deltaY<0?1.1:.9)));cam.panX=mx-ORX-wx*cam.S*cam.zoom;cam.panY=my-ORY-wy*cam.S*cam.zoom;
+    dragging=true;render();clearTimeout(zT);zT=setTimeout(()=>{dragging=false;render();},90);},{passive:false});
+  return { api, registerType:(id,mod)=>registry[id]=mod, setScene:s=>{scene=s;fit();render();}, render };   // [showcase] expose render
+})();
+/* ===================== END SHARED HARNESS ============================= */
+</script>
+
+<!-- Contract object — INLINED VERBATIM from crane.js so crane.html renders standalone even when
+     the preview sandbox cannot fetch sibling files. crane.js stays the canonical file the main
+     session links (script-src) and integrates; this block is auto-spliced from it. KEEP IDENTICAL. -->
+<script>
+/* __CRANE_JS_BEGIN__ (verbatim copy of crane.js) */
+/* ======================================================================
+   Tetrisize Platform — Crane Car (ASRS Stacker, scalable twin-mast)
+   Contract object: window.TZ_CRANE   (read components/COMPONENT_AUTHORING_BRIEF.md)
+
+   Units: schema in mm, renderer in metres (api.M = 0.001). Z-up, right-handed.
+   Local +X = mast-spacing / side-by-side / TRAVEL axis (linear, along the mast
+   centerline) ; local +Y = IDBM length / convey axis (bed depth) ; +Z = up.
+
+   FORM (confirmed with Mike):
+     • Twin-mast frame; masts rise FROM THE FLOOR. A LOW lower cross beam (top ≤125 mm)
+       ties the mast bases so the lift carriage + IDBMs can descend to the lowest floor lane.
+     • Lift carriage (NO deck): IDBMs rest on TWO coplanar support beams; reference plane
+       lifts from ~floor up to maxDeliveryHeight; mast top ≥ maxDelivery + 2200.
+     • Distance between masts = bed width = laneCount × 300 (masts spread with IDBMs).
+     • Guided by a STEEL FLOOR RAIL (mast bottoms) and an OVERHEAD MONORAIL (mast tops) —
+       both are scene/installation elements whose length & height the Configurator sets
+       from the served IDBM-array coverage.
+     • Bed IDBMs are the EXISTING IDBM design (shared api.idbm); real IDBM instances.
+   ⚠ Some dims are placeholder ASSUMPTIONS — see crane/spec.md.
+   ====================================================================== */
+(function () {
+  "use strict";
+  var IDW = 300, IDBM_H = 0.200, IDBM_BODY_BOTTOM = 0.115, ORANGE = 0xf26522;  // body underside = 115 mm above the IDBM base (shared idbm BB=.115)
+
+  var DEFAULTS = {
+    "bed.laneCount": 10,
+    "bed.idbmLength": 2500,
+    "mast.section": 300,
+    "mast.carriageWidth": 450,            // bottom bogie/carriage width on the floor rail
+    "mast.count": 2,
+    "base.beamHeight": 125,               // LOW lower-cross-beam height (≤125 so IDBMs reach the floor)
+    "vertical.maxDeliveryHeight": 6000,   // highest delivery deck height (scene-driven)
+    "mast.clearanceAboveTop": 2200,       // mast extends this far above max delivery
+    "carriage.height": 120,               // lift-carriage support-beam height
+    "clearance.berth": 150                // Configurator laneway berth (NOT drawn in the Viewer)
+  };
+  function num(inst, k) { var v = inst && inst.params ? inst.params[k] : undefined; return (v == null) ? DEFAULTS[k] : v; }
+
+  function dims(inst) {
+    var N = num(inst, "bed.laneCount"), L = num(inst, "bed.idbmLength"), mastSec = num(inst, "mast.section");
+    var carrW = num(inst, "mast.carriageWidth"), beamH = num(inst, "base.beamHeight");
+    var maxDel = num(inst, "vertical.maxDeliveryHeight"), clr = num(inst, "mast.clearanceAboveTop");
+    var spanX = N * IDW, depthY = L, mastCtrX = spanX / 2 + mastSec / 2, mastTop = maxDel + clr;
+    var footX = spanX + mastSec + carrW, footY = Math.max(depthY, carrW) + 100;
+    return { N: N, L: L, mastSec: mastSec, carrW: carrW, beamH: beamH, maxDel: maxDel, clr: clr,
+             spanX: spanX, depthY: depthY, mastCtrX: mastCtrX, mastTop: mastTop, footX: footX, footY: footY };
+  }
+  // reference-plane height (mm above floor) where the IDBMs mount — kinematic state
+  function liftMM(inst) {
+    var d = dims(inst), lo = d.beamH, hi = d.maxDel;        // lowest = top of the low cross beam (~floor)
+    var def = lo + 0.6 * (hi - lo);
+    var z = (inst && inst.kinematicState && inst.kinematicState.liftZ != null) ? inst.kinematicState.liftZ : def;
+    return Math.max(lo, Math.min(hi, z));
+  }
+
+  var SCHEMA_TYPE = {
+    typeId: "crane", name: "Crane Car (ASRS Stacker, scalable twin-mast)", category: "vehicle", class: "crane",
+    status: "Form & scaling confirmed with Mike; masts-from-floor + low (<=125 mm) lower cross beam + floor rail/overhead monorail added 2026-06-05. A few secondary defaults assumed.",
+    params: [
+      { key: "bed.laneCount",              type: "number", default: 10,  min: 1, units: "count", desc: "IDBMs side-by-side. DRIVES mast spacing & bed width (= laneCount x 300 mm)." },
+      { key: "bed.idbmLength",             type: "number", default: 2500, units: "mm", desc: "IDBM length = bed depth (local Y). Variable; common 2500/2800." },
+      { key: "mast.section",               type: "number", default: 300,  units: "mm", assumption: true, desc: "Square mast column cross-section." },
+      { key: "mast.carriageWidth",         type: "number", default: 450,  units: "mm", desc: "Bottom bogie/carriage width on the floor rail; carriages spread by laneCount x 300." },
+      { key: "mast.count",                 type: "enum",   default: 2, options: [1, 2], desc: "Twin-mast (confirmed)." },
+      { key: "base.beamHeight",            type: "number", default: 125,  max: 125, units: "mm", desc: "LOW lower-cross-beam height; top <=125 mm so the IDBMs can reach the lowest floor lane. = lowest reference-plane height." },
+      { key: "vertical.maxDeliveryHeight", type: "number", default: 6000, units: "mm", desc: "Highest delivery deck height the crane serves. SCENE-driven; sizes the mast." },
+      { key: "mast.clearanceAboveTop",     type: "number", default: 2200, units: "mm", desc: "Mast extends this far above maxDeliveryHeight (>= +2200)." },
+      { key: "carriage.height",            type: "number", default: 120,  units: "mm", assumption: true, desc: "Lift-carriage support-beam height (the two beams the IDBMs rest on)." },
+      { key: "clearance.berth",            type: "number", default: 150,  units: "mm", assumption: true, desc: "Laneway clearance berth for the Configurator footprint (NOT drawn in the Viewer)." }
+    ],
+    bed: { laneCount: 10, idbmLength: 2500, idbmWidth: 300, idbmType: "idbm", mount: "two coplanar support beams (no deck)", note: "bed = laneCount IDBM instances; obey normal IDBM op rules." },
+    kinematics: { drivableAxes: "X", liftAxis: "Z", travelAlong: "mast centerline (local X)", guides: "steel floor rail (mast bottoms) + overhead monorail (mast tops)",
+      note: "Linear travel along X (mast centerline) + vertical hoist along Z. Lowest reference plane = base.beamHeight (~floor); top of stroke = maxDeliveryHeight. Floor rail + overhead monorail are scene elements whose length/height the Configurator sets from the served array. Track length: crane END IDBM aligns with the array's OPPOSITE-end IDBM at each extreme (travelRange = arraySpan + (laneCount-1)x300)." },
+    derived: {
+      "bed.width": "laneCount x 300", "bed.depth": "bed.idbmLength",
+      "mast.spacingCtr": "laneCount x 300 + mast.section",
+      "mast.height": "maxDeliveryHeight + clearanceAboveTop  (from the FLOOR; masts rise from the floor)",
+      "lift.lowest": "base.beamHeight (top of the low cross beam, ~floor)",
+      "lift.travel": "maxDeliveryHeight - base.beamHeight",
+      "footprint": "(laneCount x 300 + mast.section + mast.carriageWidth) x (idbmLength + 100)",
+      "laneway": "Configurator-only: footprint swept along travel (X) +/- clearance.berth (see laneway2D). NOT rendered in the Viewer."
+    },
+    geometry: {
+      note: "Canonical parametric form (mm). FULLY SCALABLE. No platform deck; IDBMs on two coplanar support beams.",
+      frame: "Datum = base pose {position,yaw}. local X = mast-spacing/travel; local Y = bed depth; Z up.",
+      masts: "mast.count columns of mast.section^2 rising FROM THE FLOOR to maxDeliveryHeight + clearanceAboveTop.",
+      lowerCrossBeam: "LOW orange beam (height base.beamHeight, top <=125 mm) tying the mast bases, spanning mast-outer to mast-outer.",
+      bogies: "bottom carriages (mast.carriageWidth) at each mast base, riding the steel floor rail.",
+      headBeam: "orange beam joining the mast tops; top guide rollers ride the overhead monorail.",
+      liftCarriage: "two coplanar support beams (carriage.height) + mast shoes; drawn as one ordered group so the IDBMs always paint on top. The IDBM LONG BODY rests on the beams (body underside = 115 mm above the IDBM end-housing base; the end housings hang ~115 mm lower & outboard of the beams). Reference plane (beam top) lifts base.beamHeight -> maxDeliveryHeight.",
+      bed: "laneCount IDBMs at 300 mm pitch along local X; each idbmLength deep along local Y (shared IDBM drawer).",
+      colours: "Masts + lower & upper cross beams = Safety Orange (0xf26522); support beams + shoes dark/grey; IDBMs and rails unchanged.",
+      rule: "IDBM module FIXED (300 wide, 200 high). Mast spacing, bed, height all scale from the params."
+    },
+    connectionPoints: [
+      { id: "bed_infeed",  face: "endA", offset: [0, -1, 0], kind: "end_to_end", desc: "-Y bed edge: laneCount lane endA's meet upstream IDBM/rack lanes." },
+      { id: "bed_outfeed", face: "endB", offset: [0, 1, 0],  kind: "end_to_end", desc: "+Y bed edge: laneCount lane endB's meet downstream rack lanes." },
+      { id: "base_datum",  face: "base", offset: [0, 0, 0],  kind: "pose",        desc: "Crane datum (base pose); rides the floor rail + overhead monorail along X." }
+    ],
+    datum: { kind: "pose", form: "{ position:[x,y,z] mm, yaw rad }", kinematicState: "{ liftZ: mm } - reference-plane height above floor (runtime; optional)" },
+    meta: { author: "component-authoring session (parallel)",
+      form: "twin-mast stacker, masts-from-floor, low lower cross beam, floor rail + overhead monorail; lift carriage = 2 support beams (no deck)",
+      references: ["Mike's reference images + cleanup notes 2026-06-05", "coordinate_frame_and_component_schema_v0.1.md §2/§3/§4", "viewer_3d.html drawIdbm()"],
+      remainingAssumptions: "mast.section, carriage.height, clearance.berth. Rails/monorail length & height are Configurator-set. Appearance to be revisited." }
+  };
+
+  window.TZ_CRANE = {
+    typeId: "crane", category: "vehicle", schemaType: SCHEMA_TYPE, defaults: DEFAULTS,
+
+    draw3D: function (api, inst, lod) {
+      var M = api.M, pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0;
+      var cx = pos[0] * M, cy = pos[1] * M, cz = pos[2] * M, al = [Math.cos(yaw), Math.sin(yaw)], ac = [-al[1], al[0]];
+      var d = dims(inst);
+      var mastSec = d.mastSec * M, carrW = d.carrW * M, beamH = d.beamH * M, spanX = d.spanX * M, depthY = d.depthY * M, mastCtrX = d.mastCtrX * M;
+      var mastTopAbs = cz + d.mastTop * M, frameH = num(inst, "carriage.height") * M, idw = IDW * M, N = d.N, mastCount = num(inst, "mast.count");
+      var refZ = cz + liftMM(inst) * M;
+      var sides = (mastCount >= 2) ? [-1, 1] : [-1];
+      var parts = []; function add(x, y, z, f) { parts.push({ k: api.depth(x, y) + z * 0.01, f: f }); }
+
+      // bottom bogies/carriages at each mast base (ride the steel floor rail), low
+      sides.forEach(function (s) {
+        var fx = cx + al[0] * (s * mastCtrX), fy = cy + al[1] * (s * mastCtrX);
+        add(fx, fy, cz + beamH / 2, function () { api.obox(fx, fy, cz, cz + beamH, al, ac, carrW / 2, carrW / 2, 0x2b2f36); });
+      });
+      // LOW lower cross beam (orange, top <=125 mm) tying the mast bases, mast-outer to mast-outer
+      if (mastCount >= 2) {
+        add(cx, cy, cz + beamH / 2, function () { api.obox(cx, cy, cz, cz + beamH, al, ac, mastCtrX + mastSec / 2, mastSec * 0.55, ORANGE); });
+      }
+      // masts (orange) FROM THE FLOOR
+      sides.forEach(function (s) {
+        var mx = cx + al[0] * (s * mastCtrX), my = cy + al[1] * (s * mastCtrX);
+        add(mx, my, (cz + mastTopAbs) / 2, function () { api.obox(mx, my, cz, mastTopAbs, al, ac, mastSec / 2, mastSec / 2, ORANGE); });
+      });
+      // upper cross beam / head beam (orange)
+      if (mastCount >= 2) {
+        add(cx, cy, mastTopAbs - mastSec / 2, function () { api.obox(cx, cy, mastTopAbs - mastSec, mastTopAbs, al, ac, mastCtrX + mastSec / 2, mastSec / 2, ORANGE); });
+      }
+      // top guide rollers (ride the overhead monorail) — full LOD
+      if (lod === "full" && mastCount >= 2) {
+        sides.forEach(function (s) {
+          var mx = cx + al[0] * (s * mastCtrX), my = cy + al[1] * (s * mastCtrX);
+          add(mx, my, mastTopAbs + 0.06, function () { api.obox(mx, my, mastTopAbs, mastTopAbs + 0.12, al, ac, mastSec * 0.4, mastSec * 0.6, 0x586173); });
+        });
+      }
+      // hoist cables (full) from head beam down to the carriage
+      if (lod === "full" && mastCount >= 2 && api.ctx) {
+        sides.forEach(function (s) {
+          var mx = cx + al[0] * (s * mastCtrX) + ac[0] * (mastSec * 0.6), my = cy + al[1] * (s * mastCtrX) + ac[1] * (mastSec * 0.6);
+          add(mx, my, (mastTopAbs + refZ) / 2, function () {
+            var ctx = api.ctx, p0 = api.project(mx, my, mastTopAbs - mastSec), p1 = api.project(mx, my, refZ);
+            ctx.strokeStyle = "rgba(40,48,60,0.55)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
+          });
+        });
+      }
+
+      // ---- LIFT CARRIAGE drawn as ONE ordered group (support beams -> shoes -> IDBMs on top) ----
+      // so the two support beams are always under the IDBMs (no break-through / tilt artifacts).
+      add(cx, cy, refZ, function () {
+        // two COPLANAR support beams the IDBMs rest on (dark), spanning mast-to-mast under the bed
+        [-1, 1].forEach(function (sy) {
+          var oy = depthY * 0.32 * sy, ex = cx + ac[0] * oy, ey = cy + ac[1] * oy;
+          api.obox(ex, ey, refZ - frameH, refZ, al, ac, mastCtrX * 0.92, 0.06, 0x2b3038);
+        });
+        // mast shoes (grey) — the carriage rides the masts
+        sides.forEach(function (s) {
+          var mx = cx + al[0] * (s * mastCtrX), my = cy + al[1] * (s * mastCtrX);
+          api.obox(mx, my, refZ - frameH, refZ + frameH, al, ac, mastSec * 0.55, mastSec * 0.7, 0x586173);
+        });
+        // bed = N IDBM instances drawn far->near so they layer correctly on top.
+        // Dropped by IDBM_BODY_BOTTOM so the LONG BODY (underside 115 mm above the IDBM base) rests on
+        // the support beams; the end housings then hang ~115 mm lower and outboard of the beams.
+        var lanes = [];
+        for (var i = 0; i < N; i++) {
+          var off = (i - (N - 1) / 2) * idw, bx = cx + al[0] * off, by = cy + al[1] * off;
+          lanes.push({ d: api.depth(bx, by), x: bx, y: by });
+        }
+        lanes.sort(function (a, b) { return a.d - b.d; }).forEach(function (L) { api.idbm(L.x, L.y, refZ - IDBM_BODY_BOTTOM, depthY, yaw + Math.PI / 2, lod); });
+      });
+
+      parts.sort(function (a, b) { return a.k - b.k; }).forEach(function (p) { p.f(); });
+    },
+
+    footprint2D: function (inst) {
+      var pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0, al = [Math.cos(yaw), Math.sin(yaw)], ac = [-al[1], al[0]], d = dims(inst);
+      var hX = d.footX / 2, hY = d.footY / 2;
+      return [[-hX, -hY], [hX, -hY], [hX, hY], [-hX, hY]].map(function (c) { return [pos[0] + al[0] * c[0] + ac[0] * c[1], pos[1] + al[1] * c[0] + ac[1] * c[1]]; });
+    },
+
+    /* Configurator-only swept laneway (NOT drawn in the Viewer). travelExtent = full X travel (mm). */
+    laneway2D: function (inst, travelExtent) {
+      var pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0, al = [Math.cos(yaw), Math.sin(yaw)], ac = [-al[1], al[0]], d = dims(inst);
+      var berth = num(inst, "clearance.berth"), te = (travelExtent != null ? travelExtent : 0) / 2;
+      var hX = d.footX / 2 + te + berth, hY = d.footY / 2 + berth;
+      return [[-hX, -hY], [hX, -hY], [hX, hY], [-hX, hY]].map(function (c) { return [pos[0] + al[0] * c[0] + ac[0] * c[1], pos[1] + al[1] * c[0] + ac[1] * c[1]]; });
+    },
+
+    bbox: function (inst) {
+      var M = 0.001, pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0, cx = pos[0] * M, cy = pos[1] * M, cz = pos[2] * M, d = dims(inst);
+      var hX = (d.footX / 2) * M, hY = (d.footY / 2) * M, ca = Math.abs(Math.cos(yaw)), sa = Math.abs(Math.sin(yaw)), ex = ca * hX + sa * hY, ey = sa * hX + ca * hY;
+      return { min: [cx - ex, cy - ey, cz], max: [cx + ex, cy + ey, cz + d.mastTop * M] };
+    }
+  };
+})();
+/* __CRANE_JS_END__ */
+</script>
+
+<script>
+/* =================== STANDALONE SHOWCASE (crane.html only) ============= */
+const C = window.TZ_CRANE;
+
+/* GUIDE RAILS (scene/installation elements; lengths & monorail height set by the Configurator):
+   a STEEL FLOOR RAIL the mast bottoms track, and an OVERHEAD MONORAIL the mast tops track. */
+const TRACK = {
+  draw3D(api, inst, lod){ const M=api.M, p=inst.params, pos=inst.pose.position, yaw=inst.pose.yaw||0;
+    const cx=pos[0]*M, cy=pos[1]*M, cz=pos[2]*M, al=[Math.cos(yaw),Math.sin(yaw)], ac=[-al[1],al[0]];
+    const len=p.length*M, mz=cz+(p.monorailZ||0)*M;
+    api.obox(cx,cy,cz,cz+0.05, al,ac, len/2, 0.05, 0x8a929c);                      // steel floor rail
+    if(p.monorailZ) api.obox(cx,cy, mz, mz+0.12, al,ac, len/2, 0.07, 0x8a929c);    // overhead monorail
+  },
+  footprint2D(inst){ const p=inst.params,pos=inst.pose.position,yaw=inst.pose.yaw||0,al=[Math.cos(yaw),Math.sin(yaw)],ac=[-al[1],al[0]];
+    const hl=p.length/2, hw=150; return [[-hl,-hw],[hl,-hw],[hl,hw],[-hl,hw]].map(c=>[pos[0]+al[0]*c[0]+ac[0]*c[1],pos[1]+al[1]*c[0]+ac[1]*c[1]]); },
+  bbox(inst){ const M=0.001,p=inst.params,pos=inst.pose.position,cx=pos[0]*M,cy=pos[1]*M,cz=pos[2]*M,hl=p.length/2*M,zt=((p.monorailZ||0)+150)*M;
+    return {min:[cx-hl,cy-0.15,cz],max:[cx+hl,cy+0.15,cz+zt]}; }
+};
+TZ.registerType('track', TRACK);
+TZ.registerType('crane', C);
+
+const A = Object.assign({}, C.defaults);                 // 10 × 2500, delivery 6000
+const N_A=A['bed.laneCount'], footXA=N_A*300+A['mast.section']+A['mast.carriageWidth'];
+const TRAVEL_HALF=footXA*0.7, trackLenA=2*TRAVEL_HALF+footXA+800;
+const monoA=A['vertical.maxDeliveryHeight']+A['mast.clearanceAboveTop'], FRONT_TOP=A['vertical.maxDeliveryHeight'];
+const B={ 'bed.laneCount':16,'bed.idbmLength':2800,'mast.section':300,'mast.carriageWidth':450,'mast.count':2,
+  'base.beamHeight':125,'vertical.maxDeliveryHeight':8000,'mast.clearanceAboveTop':2200,'carriage.height':120,'clearance.berth':150 };
+const footXB=16*300+B['mast.section']+B['mast.carriageWidth'], monoB=B['vertical.maxDeliveryHeight']+B['mast.clearanceAboveTop'], ROW_B=6800;
+
+const SCENE = [
+  { type:'track', pose:{position:[0,0,0]},      params:{length:trackLenA, monorailZ:monoA} },
+  { type:'crane', pose:{position:[0,0,0],yaw:0},   params:A, kinematicState:{liftZ:FRONT_TOP} },
+  { type:'track', pose:{position:[0,ROW_B,0]},  params:{length:footXB+5000, monorailZ:monoB} },
+  { type:'crane', pose:{position:[0,ROW_B,0],yaw:0}, params:B }
+];
+TZ.setScene(SCENE);
+requestAnimationFrame(()=>TZ.setScene(SCENE));
+addEventListener('load', ()=>TZ.setScene(SCENE));
+
+const main = SCENE[1];
+function bounds(){ const p=main.params, lo=p['base.beamHeight'], hi=p['vertical.maxDeliveryHeight']; return { lo, hi, pitch:(hi-lo)/4 }; }
+function curLift(){ return (main.kinematicState && main.kinematicState.liftZ!=null) ? main.kinematicState.liftZ : main.params['base.beamHeight']; }
+function curX(){ return main.pose.position[0]; }
+function updateInfo(){ const p=main.params, lift=Math.round(curLift()), tx=Math.round(curX());
+  const span=p['bed.laneCount']*300, mastTop=p['vertical.maxDeliveryHeight']+p['mast.clearanceAboveTop'];
+  document.getElementById('infoBody').innerHTML =
+    `<div class="irow"><span>Bed (lanes×len)</span><b>${p['bed.laneCount']} × ${p['bed.idbmLength']}</b></div>`+
+    `<div class="irow"><span>Mast span (=N×300)</span><b>${span} mm</b></div>`+
+    `<div class="irow"><span>Max delivery</span><b>${p['vertical.maxDeliveryHeight']} mm</b></div>`+
+    `<div class="irow"><span>Mast top (+${p['mast.clearanceAboveTop']})</span><b>${mastTop} mm</b></div>`+
+    `<div class="irow"><span>Lowest (floor)</span><b>${p['base.beamHeight']} mm</b></div>`+
+    `<div class="irow"><span>Reference plane (Z)</span><b>${lift} mm</b></div>`+
+    `<div class="irow"><span>Travel (X)</span><b>${tx} mm</b></div>`;
+}
+updateInfo();
+
+/* lift (Z) */
+function setLift(z){ main.kinematicState={ liftZ:z }; TZ.render(); updateInfo(); }
+document.getElementById('liftUp').onclick =()=>{ const b=bounds(); setLift(Math.min(b.hi, curLift()+b.pitch)); };
+document.getElementById('liftDn').onclick =()=>{ const b=bounds(); setLift(Math.max(b.lo, curLift()-b.pitch)); };
+let animL=null, dirL=-1; const animLBtn=document.getElementById('anim');
+function tickL(){ const b=bounds(); let z=curLift()+dirL*((b.hi-b.lo)*0.012+18);
+  if(z>=b.hi){z=b.hi;dirL=-1;} else if(z<=b.lo){z=b.lo;dirL=1;}
+  main.kinematicState={ liftZ:z }; TZ.render(); updateInfo(); animL=requestAnimationFrame(tickL); }
+animLBtn.onclick=()=>{ if(animL){cancelAnimationFrame(animL);animL=null;animLBtn.classList.remove('on');animLBtn.textContent='Animate lift';}
+  else{animLBtn.classList.add('on');animLBtn.textContent='Pause lift';tickL();} };
+
+/* travel (X — along the mast centerline) */
+function setX(x){ main.pose.position[0]=Math.max(-TRAVEL_HALF, Math.min(TRAVEL_HALF, x)); TZ.render(); updateInfo(); }
+document.getElementById('travR').onclick =()=>setX(curX()+300);
+document.getElementById('travL').onclick =()=>setX(curX()-300);
+let animT=null, dirT=1; const animTBtn=document.getElementById('animTrav');
+function tickT(){ let x=curX()+dirT*(TRAVEL_HALF*0.007+12);
+  if(x>=TRAVEL_HALF){x=TRAVEL_HALF;dirT=-1;} else if(x<=-TRAVEL_HALF){x=-TRAVEL_HALF;dirT=1;}
+  setX(x); animT=requestAnimationFrame(tickT); }
+animTBtn.onclick=()=>{ if(animT){cancelAnimationFrame(animT);animT=null;animTBtn.classList.remove('on');animTBtn.textContent='Animate travel';}
+  else{animTBtn.classList.add('on');animTBtn.textContent='Pause travel';tickT();} };
+
+/* LOD */
+const lodBtns={ lodAuto:null, lodFull:'full', lodMed:'med', lodSimple:'simple' };
+function setLOD(v,id){ window.__forceLOD=v; TZ.render(); Object.keys(lodBtns).forEach(k=>document.getElementById(k).classList.toggle('on', k===id)); }
+document.getElementById('lodAuto').onclick   =()=>setLOD(null,'lodAuto');
+document.getElementById('lodFull').onclick   =()=>setLOD('full','lodFull');
+document.getElementById('lodMed').onclick    =()=>setLOD('med','lodMed');
+document.getElementById('lodSimple').onclick =()=>setLOD('simple','lodSimple');
+setLOD(null,'lodAuto');
+
+/* reset */
+document.getElementById('reset').onclick=()=>{
+  if(animL){cancelAnimationFrame(animL);animL=null;animLBtn.classList.remove('on');animLBtn.textContent='Animate lift';}
+  if(animT){cancelAnimationFrame(animT);animT=null;animTBtn.classList.remove('on');animTBtn.textContent='Animate travel';}
+  window.__forceLOD=null; Object.keys(lodBtns).forEach(k=>document.getElementById(k).classList.toggle('on',k==='lodAuto'));
+  main.kinematicState={ liftZ:FRONT_TOP }; main.pose.position[0]=0; TZ.api.cam.az=0.86; TZ.api.cam.el=0.62; TZ.setScene(SCENE); updateInfo(); };
+</script>
+</body>
+</html>

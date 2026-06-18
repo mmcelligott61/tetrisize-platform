@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tetrisize Platform — Configurator v0.3</title>
+<link rel="stylesheet" href="ui_kit.css">
+<script>window.TZ_SCREEN='configurator';</script>
+<script src="ui_kit.js"></script>
+<style>
+  *{box-sizing:border-box} html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  body{background:radial-gradient(130% 130% at 50% 0%,var(--tz-bg1),var(--tz-bg2));color:var(--tz-ink)}
+  #wrap{max-width:1280px;margin:0 auto;padding:74px 22px 30px;display:grid;grid-template-columns:380px 1fr;gap:14px}
+  .pane{padding:15px 17px}
+  .pane h3{margin:0 0 10px;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tz-muted)}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:5px 0;font-size:11.5px}
+  .row label{color:var(--tz-muted)}
+  .row input{width:90px;font-size:11.5px;padding:4px 7px;border-radius:6px;border:1px solid var(--tz-brd);background:var(--tz-panel-solid);color:var(--tz-ink);text-align:right;font-variant-numeric:tabular-nums}
+  .btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .btns button{cursor:pointer;font-size:10px;font-weight:700;padding:7px 11px;border-radius:8px;border:1px solid var(--tz-brd);background:var(--tz-panel-solid);color:var(--tz-ink)}
+  .btns button.primary{background:var(--tz-accent);border-color:var(--tz-accent);color:#fff}
+  .btns button:disabled{opacity:.4;cursor:default}
+  #val div{font-size:11px;padding:3px 0;border-top:1px solid var(--tz-brd)}
+  .err{color:#e23c4b;font-weight:700}.warn{color:var(--tz-gold,#d49a00)}.okv{color:var(--tz-green,#3F9C35)}
+  #cv{width:100%;border-radius:10px;background:#10161f}
+  #rt{font-size:11px;line-height:1.6}
+  .sub{font-size:10px;color:var(--tz-muted);line-height:1.5;margin-top:8px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="pane tz-panel">
+    <h3>Facility parameters <span style="float:right;color:var(--tz-muted)">v0.3 parametric</span></h3>
+    <div class="row"><label>Storage columns (× 300 mm)</label><input id="pCols" type="number" value="100"></div>
+    <div class="row"><label>Rows per array (× 6 m)</label><input id="pRows" type="number" value="3"></div>
+    <div class="row"><label>Levels</label><input id="pLvls" type="number" value="3"></div>
+    <div class="row"><label>Level pitch (mm)</label><input id="pLP" type="number" value="2500"></div>
+    <div class="row"><label>Corridor 1 — entrance↔A1 (mm)</label><input id="pC1" type="number" value="2540"></div>
+    <div class="row"><label>Corridor 2 — A1↔A2 (mm)</label><input id="pC2" type="number" value="2540"></div>
+    <div class="row"><label>Corridor 3 — A2↔exit (mm)</label><input id="pC3" type="number" value="2540"></div>
+    <div class="row"><label>Entrance columns</label><input id="pEnt" type="number" value="21"></div>
+    <div class="row"><label>Exit columns</label><input id="pExt" type="number" value="21"></div>
+    <div class="row"><label>Car bed lanes (columns)</label><input id="pBedC" type="number" value="20"></div>
+    <div class="row"><label>Car bed depth (mm)</label><input id="pBedL" type="number" value="2500"></div>
+    <div class="row"><label>Tallest load incl. pallet (mm)</label><input id="pLoad" type="number" value="1450"></div>
+    <div class="row"><label>West origin x (mm)</label><input id="pX0" type="number" value="-29700"></div>
+    <div class="row"><label>A1 south anchor y (mm)</label><input id="pA1S" type="number" value="-3000"></div>
+    <div class="row" style="opacity:.45" title="Future: cars on both corridors of each array — needs either-end retrieval (BUILD_SCRIPT backlog)"><label>⏳ Second corridor per array (either-end)</label><input type="checkbox" disabled></div>
+    <h3 style="margin-top:14px">Validation</h3>
+    <div id="val"></div>
+    <div class="btns">
+      <button id="bLoad">LOAD CURRENT LAYOUT</button>
+      <button id="bRT">ROUND-TRIP CHECK</button>
+      <button id="bExp">EXPORT JSON</button>
+      <button id="bRun" class="primary">▶ RUN IN VIEWER</button>
+    </div>
+    <div id="rt" style="margin-top:8px"></div>
+    <div class="sub">Parametric authoring of the v0.3 facility schema. LOAD CURRENT derives these parameters from the live layout; EXPORT downloads the JSON; RUN IN VIEWER hands the layout straight to the Viewer (sticky until <code>__layoutReset()</code>). The freeform editor remains at <a href="configurator_idbm_v0.2.html" style="color:var(--tz-accent)">v0.2</a>.</div>
+  </div>
+  <div class="pane tz-panel">
+    <h3>Top view <span id="meta" style="float:right;color:var(--tz-muted)"></span></h3>
+    <canvas id="cv" width="860" height="640"></canvas>
+  </div>
+</div>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const P=()=>({ cols:+$('pCols').value, rows:+$('pRows').value, lvls:+$('pLvls').value, lp:+$('pLP').value,
+    c1:+$('pC1').value, c2:+$('pC2').value, c3:+$('pC3').value, ent:+$('pEnt').value, ext:+$('pExt').value,
+    bedC:+$('pBedC').value, bedL:+$('pBedL').value, loadH:+$('pLoad').value, x0:+$('pX0').value, a1S:+$('pA1S').value,
+    pitch:300, rowLen:6000, beltOff:110 });
+  // ---- geometry (single source of truth — derive + generate + preview all use it) ----
+  function geo(p){ const a1N=p.a1S+p.rows*p.rowLen, a2N=p.a1S-p.c2, a2S=a2N-p.rows*p.rowLen;
+    const entS=a1N+p.c1, entN=entS+p.rowLen, extN=a2S-p.c3, extS=extN-p.rowLen;
+    const x1=p.x0+(p.cols-1)*p.pitch, entX0=x1-(p.ent-1)*p.pitch, extX1=p.x0+(p.ext-1)*p.pitch;
+    return {a1N,a2N,a2S,entS,entN,extN,extS,x1,entX0,extX1}; }
+  function validate(p){ const out=[], g=geo(p);
+    const need=p.bedL+40;
+    [['Corridor 1',p.c1],['Corridor 2',p.c2],['Corridor 3',p.c3]].forEach(([n,v])=>{
+      if(v<need)out.push(['err',n+' = '+v+' mm < car bed '+p.bedL+' + 40 clearance — the car cannot fit']);
+      else out.push(['ok',n+' '+v+' mm ≥ bed '+p.bedL+' + clearance ✓']); });
+    if(p.ext<p.bedC)out.push(['err','Exit columns '+p.ext+' < car bed lanes '+p.bedC+' — full-bed discharge impossible']);
+    else out.push(['ok','Exit expanse '+p.ext+' ≥ bed '+p.bedC+' ✓']);
+    if(p.ent<p.bedC)out.push(['warn','Entrance columns '+p.ent+' < bed '+p.bedC+' — infeed narrower than the car']);
+    const headroom=170+150+p.loadH+150;
+    if(p.lvls>1&&p.lp<headroom)out.push(['err','Level pitch '+p.lp+' < required '+headroom+' (IDBM 170 + pallet 150 + load '+p.loadH+' + 150 clear)']);
+    else if(p.lvls>1)out.push(['ok','Level pitch '+p.lp+' ≥ '+headroom+' ✓']);
+    if(p.cols<20)out.push(['err','Columns '+p.cols+' < 20 — a 19-IDBM lane class cannot form']);
+    if(p.rows<1||p.lvls<1)out.push(['err','Need ≥1 row and ≥1 level']);
+    return out; }
+  function generate(p,name){ const g=geo(p), inst=[], ts=new Date().toISOString(); let n=0;
+    const idbm=(x,y0,y1,z)=>{ inst.push({instanceId:'IDBM-'+String(++n).padStart(4,'0'),typeRef:'idbm',
+      params:{width:300,length:p.rowLen,height:170},datum:{endA:[x,y0,z],endB:[x,y1,z]},coordSource:{mode:'design',timestamp:ts},laneId:null}); };
+    const levels=[]; for(let l=0;l<p.lvls;l++)levels.push({levelId:'Z'+(l*p.lp),baseZ:l*p.lp});
+    for(let l=0;l<p.lvls;l++){ const z=l*p.lp+p.beltOff;
+      for(let r=0;r<p.rows;r++)for(let c=0;c<p.cols;c++)idbm(p.x0+c*p.pitch,p.a1S+r*p.rowLen,p.a1S+(r+1)*p.rowLen,z);
+      for(let r=0;r<p.rows;r++)for(let c=0;c<p.cols;c++)idbm(p.x0+c*p.pitch,g.a2N-(r+1)*p.rowLen,g.a2N-r*p.rowLen,z); }
+    for(let c=0;c<p.ent;c++)idbm(g.entX0+c*p.pitch,g.entS,g.entN,p.beltOff);
+    for(let c=0;c<p.ext;c++)idbm(p.x0+c*p.pitch,g.extS,g.extN,p.beltOff);
+    const midX=Math.round((p.x0+g.x1)/2), travel=(g.x1-p.x0)+14400;
+    const crane=(i,y,yaw)=>({instanceId:'CRANE-00'+i,typeRef:'crane',pose:{position:[midX,y,0],yaw:yaw},
+      params:{'bed.laneCount':p.bedC,'bed.idbmLength':p.bedL,'mast.section':300,'mast.carriageWidth':450,'mast.count':2,'base.beamHeight':110,'vertical.maxDeliveryHeight':(p.lvls-1)*p.lp+1000,'mast.clearanceAboveTop':2200,'carriage.height':120,'clearance.berth':150,'chassis.height':110},
+      travel:travel,travelMid:0,route:[],routeWidths:null,track:[],stops:[],coordSource:{mode:'design',timestamp:ts}});
+    const vehicles=[ crane(1,Math.round((g.extN+g.a2S)/2),0), crane(2,Math.round((g.a2N+p.a1S)/2),0), crane(3,Math.round((g.a1N+g.entS)/2),Math.PI) ];
+    const mk=(y0,y1)=>({kind:'corridor',color:'yellow',poly:[[p.x0-10400,y0-180],[g.x1+11100,y0-180],[g.x1+11100,y1+180],[p.x0-10400,y1+180]]});
+    return { schema:'tetrisize.platform/v0.3', site:{siteId:'site-1',units:'mm',up:'Z',handedness:'right',origin:{x:0,y:0,z:0},floorToBeltOffset:310},
+      levels:levels, instances:inst, lanes:[], vehicles:vehicles, objects:[],
+      markings:[mk(g.extN,g.a2S),mk(g.a2N,p.a1S),mk(g.a1N,g.entS)], exportedAt:ts, name:name||'parametric' }; }
+  function derive(d){ const rows={}; d.instances.forEach(x=>{ if(x.typeRef!=='idbm')return;
+      const a=x.datum.endA,b=x.datum.endB,k=a[2]+'|'+Math.min(a[1],b[1])+'|'+Math.max(a[1],b[1]); (rows[k]=rows[k]||[]).push(a[0]); });
+    const rl=Object.keys(rows).map(k=>{ const [z,y0,y1]=k.split('|').map(Number), xs=rows[k].sort((a,b)=>a-b);
+      return {z,y0,y1,n:xs.length,x0:xs[0],x1:xs[xs.length-1]}; });
+    const zs=[...new Set(rl.map(r=>r.z))].sort((a,b)=>a-b), ground=zs[0];
+    const big=rl.filter(r=>r.n>=50), gBig=big.filter(r=>r.z===ground).sort((a,b)=>a.y0-b.y0);
+    const small=rl.filter(r=>r.n<50&&r.z===ground).sort((a,b)=>a.y0-b.y0);
+    if(!gBig.length||small.length<2)throw new Error('layout is not in the regular two-array form');
+    const ext=small[0], ent=small[small.length-1];
+    const rows2=gBig.length/2; if(rows2!==Math.floor(rows2))throw new Error('arrays are not equal row counts');
+    const a2rows=gBig.slice(0,rows2), a1rows=gBig.slice(rows2);
+    const v=d.vehicles&&d.vehicles[0];
+    const p={ cols:gBig[0].n, rows:rows2, lvls:zs.length, lp:zs.length>1?zs[1]-zs[0]:2500,
+      c1:ent.y0-a1rows[a1rows.length-1].y1, c2:a1rows[0].y0-a2rows[a2rows.length-1].y1, c3:a2rows[0].y0-ext.y1,
+      ent:ent.n, ext:ext.n, bedC:v?v.params['bed.laneCount']:20, bedL:v?v.params['bed.idbmLength']:2500,
+      loadH:+$('pLoad').value, x0:gBig[0].x0, a1S:a1rows[0].y0, pitch:300, rowLen:gBig[0].y1-gBig[0].y0, beltOff:ground-zs[0] };
+    p.beltOff=ground- (d.levels&&d.levels[0]?d.levels[0].baseZ:0);
+    return p; }
+  function setForm(p){ $('pCols').value=p.cols; $('pRows').value=p.rows; $('pLvls').value=p.lvls; $('pLP').value=p.lp;
+    $('pC1').value=p.c1; $('pC2').value=p.c2; $('pC3').value=p.c3; $('pEnt').value=p.ent; $('pExt').value=p.ext;
+    $('pBedC').value=p.bedC; $('pBedL').value=p.bedL; $('pX0').value=p.x0; $('pA1S').value=p.a1S; }
+  function geoSig(d){ return d.instances.filter(i=>i.typeRef==='idbm')
+    .map(i=>[i.datum.endA[0],i.datum.endA[1],i.datum.endA[2],i.datum.endB[1]].join(','))
+    .sort().join(';'); }
+  function draw(){ const p=P(), g=geo(p), c=$('cv').getContext('2d'), W=$('cv').width,H=$('cv').height;
+    c.clearRect(0,0,W,H);
+    const ys=[g.extS,g.entN], xs=[p.x0-1500,g.x1+1500];
+    const sx=(W-30)/(xs[1]-xs[0]), sy=(H-30)/(ys[1]-ys[0]), s=Math.min(sx,sy);
+    const X=x=>15+(x-xs[0])*s, Y=y=>H-15-(y-ys[0])*s;
+    const strip=(x0,x1,y0,y1,col)=>{ c.fillStyle=col; c.fillRect(X(x0),Y(y1),(x1-x0)*s,(y1-y0)*s); };
+    for(let r=0;r<p.rows;r++){ strip(p.x0,g.x1+300,p.a1S+r*p.rowLen,p.a1S+(r+1)*p.rowLen-60,'#3a4356');
+      strip(p.x0,g.x1+300,g.a2N-(r+1)*p.rowLen+60,g.a2N-r*p.rowLen,'#3a4356'); }
+    strip(g.entX0,g.x1+300,g.entS,g.entN,'#2e7d46'); strip(p.x0,g.extX1+300,g.extS,g.extN,'#8d2f35');
+    [[g.extN,g.a2S],[g.a2N,p.a1S],[g.a1N,g.entS]].forEach(([y0,y1],i)=>{ c.fillStyle='rgba(234,171,0,.20)';
+      c.fillRect(X(p.x0-900),Y(y1),(g.x1-p.x0+1800)*s,(y1-y0)*s);
+      c.fillStyle='#d49a00'; c.font='600 10px Arial';
+      c.fillText('corridor '+(3-i)+' · '+( [p.c3,p.c2,p.c1][i] )+' mm · CAR-'+( [3,2,1][2-i] ),X(p.x0)+4,Y(y0)-( (y1-y0)*s/2 )+4); });
+    c.fillStyle='#9fb0c4'; c.font='600 11px Arial';
+    c.fillText('ENTRANCE '+p.ent+' cols',X(g.entX0)+4,Y(g.entN)+14);
+    c.fillText('EXIT '+p.ext+' cols',X(p.x0)+4,Y(g.extN)+14);
+    c.fillText('A1 — '+p.cols+' cols × '+p.rows+' rows × '+p.lvls+' levels',X(p.x0)+4,Y(g.a1N)+14);
+    c.fillText('A2',X(p.x0)+4,Y(g.a2N)+14);
+    $('meta').textContent=(p.cols*p.rows*2*p.lvls+p.ent+p.ext)+' IDBMs · footprint '+(((g.x1-p.x0)/1000)+0.3).toFixed(1)+' × '+(((g.entN-g.extS)/1000)).toFixed(1)+' m';
+    const val=validate(p), errs=val.filter(v=>v[0]==='err').length;
+    $('val').innerHTML=val.map(([k,m])=>'<div class="'+(k==='err'?'err':k==='warn'?'warn':'okv')+'">'+(k==='err'?'✕ ':k==='warn'?'⚠ ':'✓ ')+m+'</div>').join('');
+    $('bRun').disabled=errs>0; $('bExp').disabled=errs>0;
+    return errs===0; }
+  document.querySelectorAll('input[type=number]').forEach(i=>i.oninput=draw);
+  let current=null;
+  $('bLoad').onclick=()=>{ fetch('idbm_data.js?'+Math.random()).then(r=>r.text()).then(t=>{
+      const d=JSON.parse(t.slice(t.indexOf('{'),t.lastIndexOf('}')+1)); current=d;
+      try{ setForm(derive(d)); draw(); $('rt').innerHTML='<span class="okv">✓ parameters derived from the live layout ('+d.instances.length+' IDBMs)</span>'; }
+      catch(e){ $('rt').innerHTML='<span class="err">✕ '+e.message+'</span>'; } })
+      .catch(e=>{ $('rt').innerHTML='<span class="err">✕ fetch failed (file:// needs http) — '+e.message+'</span>'; }); };
+  $('bRT').onclick=()=>{ if(!current){ $('rt').innerHTML='<span class="warn">⚠ LOAD CURRENT first</span>'; return; }
+    const gen=generate(P());
+    const a=geoSig(current), b=geoSig(gen);
+    const lv=JSON.stringify(current.levels.map(l=>l.baseZ))===JSON.stringify(gen.levels.map(l=>l.baseZ));
+    const cars=current.vehicles.length===gen.vehicles.length &&
+      current.vehicles.every((v,i)=>v.params['bed.laneCount']===gen.vehicles[i].params['bed.laneCount']&&
+        Math.abs(v.pose.position[1]-gen.vehicles[i].pose.position[1])<2);
+    $('rt').innerHTML=(a===b&&lv&&cars)?'<span class="okv">✓ ROUND-TRIP CLEAN — IDBM geometry set identical ('+gen.instances.length+'), levels identical, car corridors identical</span>'
+      :'<span class="err">✕ round-trip differs — idbm:'+(a===b)+' levels:'+lv+' cars:'+cars+'</span>'; };
+  $('bExp').onclick=()=>{ if(!draw())return; const d=generate(P(),'export');
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(d)],{type:'application/json'}));
+    a.download='idbm_layout_v03.json'; a.click(); };
+  $('bRun').onclick=()=>{ if(!draw())return; const d=generate(P(),'configurator '+new Date().toISOString().slice(11,16));
+    try{ localStorage.setItem('tz-layout',JSON.stringify({ts:Date.now(),name:d.name,data:d})); }
+    catch(e){ $('rt').innerHTML='<span class="err">✕ hand-off failed: '+e.message+'</span>'; return; }
+    $('rt').innerHTML='<span class="okv">✓ layout staged — opening the Viewer…</span>';
+    setTimeout(()=>{ location.href='viewer_3d.html?l='+Date.now(); },500); };       // cache-buster — a stale cached viewer cost a debugging round
+  draw();
+})();
+</script>
+</body>
+</html>

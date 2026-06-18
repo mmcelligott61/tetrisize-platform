@@ -1,0 +1,59 @@
+{
+  "typeId": "crane",
+  "name": "Crane Car (ASRS Stacker, scalable twin-mast)",
+  "category": "vehicle",
+  "class": "crane",
+  "status": "Form & scaling confirmed; masts-from-floor + low (<=125 mm) lower cross beam + floor rail/overhead monorail added 2026-06-05. A few secondary defaults assumed.",
+  "params": [
+    { "key": "bed.laneCount",              "type": "number", "default": 10,  "min": 1, "units": "count", "desc": "IDBMs side-by-side. DRIVES mast spacing & bed width (= laneCount x 300 mm)." },
+    { "key": "bed.idbmLength",             "type": "number", "default": 2500, "units": "mm", "desc": "IDBM length = bed depth (local Y). Variable; common 2500/2800." },
+    { "key": "mast.section",               "type": "number", "default": 300,  "units": "mm", "assumption": true, "desc": "Square mast column cross-section." },
+    { "key": "mast.carriageWidth",         "type": "number", "default": 450,  "units": "mm", "desc": "Bottom bogie/carriage width on the floor rail; carriages spread by laneCount x 300." },
+    { "key": "mast.count",                 "type": "enum",   "default": 2, "options": [1, 2], "desc": "Twin-mast (confirmed)." },
+    { "key": "base.beamHeight",            "type": "number", "default": 125,  "max": 125, "units": "mm", "desc": "LOW lower-cross-beam height; top <=125 mm so the IDBMs reach the lowest floor lane. = lowest reference-plane height." },
+    { "key": "vertical.maxDeliveryHeight", "type": "number", "default": 6000, "units": "mm", "desc": "Highest delivery deck height the crane serves. SCENE-driven; sizes the mast." },
+    { "key": "mast.clearanceAboveTop",     "type": "number", "default": 2200, "units": "mm", "desc": "Mast extends this far above maxDeliveryHeight (>= +2200)." },
+    { "key": "carriage.height",            "type": "number", "default": 120,  "units": "mm", "assumption": true, "desc": "Lift-carriage support-beam height (the two beams the IDBMs rest on)." },
+    { "key": "clearance.berth",            "type": "number", "default": 150,  "units": "mm", "assumption": true, "desc": "Laneway clearance berth for the Configurator footprint (NOT drawn in the Viewer)." }
+  ],
+  "bed": { "laneCount": 10, "idbmLength": 2500, "idbmWidth": 300, "idbmType": "idbm", "mount": "two coplanar support beams (no deck)", "note": "bed = laneCount IDBM instances; obey normal IDBM op rules." },
+  "kinematics": { "drivableAxes": "X", "liftAxis": "Z", "travelAlong": "mast centerline (local X)", "guides": "steel floor rail (mast bottoms) + overhead monorail (mast tops)",
+    "note": "Linear travel along X (mast centerline) + vertical hoist along Z. Lowest reference plane = base.beamHeight (~floor); top of stroke = maxDeliveryHeight. Floor rail + overhead monorail are scene elements whose length/height the Configurator sets from the served array. Track length: crane END IDBM aligns with the array's OPPOSITE-end IDBM at each extreme (travelRange = arraySpan + (laneCount-1)x300)." },
+  "derived": {
+    "bed.width": "laneCount x 300", "bed.depth": "bed.idbmLength",
+    "mast.spacingCtr": "laneCount x 300 + mast.section",
+    "mast.height": "maxDeliveryHeight + clearanceAboveTop (from the FLOOR; masts rise from the floor)",
+    "lift.lowest": "base.beamHeight (top of the low cross beam, ~floor)",
+    "lift.travel": "maxDeliveryHeight - base.beamHeight",
+    "footprint": "(laneCount x 300 + mast.section + mast.carriageWidth) x (idbmLength + 100)",
+    "laneway": "Configurator-only: footprint swept along travel (X) +/- clearance.berth (see laneway2D). NOT rendered in the Viewer."
+  },
+  "geometry": {
+    "note": "Canonical parametric form (mm). FULLY SCALABLE. No platform deck; IDBMs on two coplanar support beams.",
+    "frame": "Datum = base pose {position,yaw}. local X = mast-spacing/travel; local Y = bed depth; Z up.",
+    "masts": "mast.count columns of mast.section^2 rising FROM THE FLOOR to maxDeliveryHeight + clearanceAboveTop.",
+    "lowerCrossBeam": "LOW orange beam (height base.beamHeight, top <=125 mm) tying the mast bases, spanning mast-outer to mast-outer.",
+    "bogies": "bottom carriages (mast.carriageWidth) at each mast base, riding the steel floor rail.",
+    "headBeam": "orange beam joining the mast tops; top guide rollers ride the overhead monorail.",
+    "liftCarriage": "two coplanar support beams (carriage.height) + mast shoes; drawn as one ordered group so the IDBMs always paint on top. The IDBM LONG BODY rests on the beams (body underside = 115 mm above the IDBM end-housing base; end housings hang ~115 mm lower & outboard). Reference plane (beam top) lifts base.beamHeight -> maxDeliveryHeight.",
+    "bed": "laneCount IDBMs at 300 mm pitch along local X; each idbmLength deep along local Y (shared IDBM drawer).",
+    "colours": "Masts + lower & upper cross beams = Safety Orange (0xf26522); support beams + shoes dark/grey; IDBMs and rails unchanged.",
+    "rule": "IDBM module FIXED (300 wide, 200 high). Mast spacing, bed, height all scale from the params."
+  },
+  "connectionPoints": [
+    { "id": "bed_infeed",  "face": "endA", "offset": [0, -1, 0], "kind": "end_to_end", "desc": "-Y bed edge: laneCount lane endA's meet upstream IDBM/rack lanes." },
+    { "id": "bed_outfeed", "face": "endB", "offset": [0, 1, 0],  "kind": "end_to_end", "desc": "+Y bed edge: laneCount lane endB's meet downstream rack lanes." },
+    { "id": "base_datum",  "face": "base", "offset": [0, 0, 0],  "kind": "pose",        "desc": "Crane datum (base pose); rides the floor rail + overhead monorail along X." }
+  ],
+  "datum": { "kind": "pose", "form": "{ position:[x,y,z] mm, yaw rad }", "kinematicState": "{ liftZ: mm } - reference-plane height above floor (runtime; optional)" },
+  "defaults": {
+    "bed.laneCount": 10, "bed.idbmLength": 2500, "mast.section": 300, "mast.carriageWidth": 450, "mast.count": 2,
+    "base.beamHeight": 125, "vertical.maxDeliveryHeight": 6000, "mast.clearanceAboveTop": 2200, "carriage.height": 120, "clearance.berth": 150
+  },
+  "meta": {
+    "author": "component-authoring session (parallel)",
+    "form": "twin-mast stacker, masts-from-floor, low lower cross beam, floor rail + overhead monorail; lift carriage = 2 support beams (no deck)",
+    "references": ["Mike's reference images + cleanup notes 2026-06-05", "coordinate_frame_and_component_schema_v0.1.md section 2/3/4", "viewer_3d.html drawIdbm()"],
+    "remainingAssumptions": "mast.section, carriage.height, clearance.berth. Rails/monorail length & height are Configurator-set. Appearance to be revisited."
+  }
+}

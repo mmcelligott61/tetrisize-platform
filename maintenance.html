@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tetrisize Platform — Maintenance</title>
+<link rel="stylesheet" href="ui_kit.css">
+<script>window.TZ_SCREEN='maintenance';</script>
+<script src="ui_kit.js"></script>
+<style>
+  *{box-sizing:border-box} html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  body{background:radial-gradient(130% 130% at 50% 0%,var(--tz-bg1),var(--tz-bg2));color:var(--tz-ink)}
+  #wrap{max-width:1280px;margin:0 auto;padding:74px 22px 30px;display:grid;grid-template-columns:1.2fr 1fr;gap:14px}
+  .pane{padding:15px 17px}
+  .pane h3{margin:0 0 10px;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tz-muted)}
+  #offline{grid-column:1/-1;display:none;padding:12px 16px;color:var(--tz-orange);font-weight:700;font-size:13px}
+  .kpis{grid-column:1/-1;display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  .kpi{padding:13px 16px}.kpi b{font-size:24px;display:block;font-variant-numeric:tabular-nums}
+  .kpi span{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--tz-muted)}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--tz-muted);text-align:left;padding:4px 6px;border-bottom:1px solid var(--tz-brd)}
+  td{padding:5px 6px;border-bottom:1px solid var(--tz-brd);font-variant-numeric:tabular-nums}
+  .chip{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.05em;border-radius:99px;padding:2px 8px}
+  .ok{background:rgba(63,156,53,.18);color:var(--tz-green,#3F9C35)}
+  .fault{background:rgba(209,31,45,.2);color:#e23c4b;animation:pul 1.1s infinite}
+  .lock{background:rgba(234,171,0,.2);color:var(--tz-gold,#EAAB00)}
+  .dock{background:rgba(209,31,45,.14);color:#e23c4b}
+  @keyframes pul{50%{opacity:.45}}
+  button.act{cursor:pointer;font-size:9px;font-weight:700;padding:3px 7px;border-radius:6px;border:1px solid var(--tz-brd);background:var(--tz-panel-solid);color:var(--tz-ink);margin-right:3px}
+  button.act.red{border-color:#b91c1c;color:#e23c4b} button.act.amber{border-color:var(--tz-gold);color:var(--tz-gold)}
+  button.act.green{border-color:var(--tz-green,#3F9C35);color:var(--tz-green,#3F9C35)}
+  #laneFilter{width:140px;font-size:11px;padding:4px 7px;border-radius:6px;border:1px solid var(--tz-brd);background:var(--tz-panel-solid);color:var(--tz-ink)}
+  #lanes-scroll{max-height:430px;overflow:auto}
+  #flog{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;line-height:1.65;max-height:300px;overflow:auto}
+  #flog div{border-top:1px solid var(--tz-brd);padding:2px 0}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="offline" class="tz-panel">SIM OFFLINE — open the Viewer 3D tab to drive the facility; this screen commands it through the bridge.</div>
+  <div class="kpis">
+    <div class="kpi tz-panel"><span>Faults active</span><b id="kF">—</b></div>
+    <div class="kpi tz-panel"><span>Lockouts</span><b id="kL">—</b></div>
+    <div class="kpi tz-panel"><span>Cars in service</span><b id="kC">—</b></div>
+    <div class="kpi tz-panel"><span>Lanes formed</span><b id="kLn">—</b></div>
+    <div class="kpi tz-panel"><span>Pallets active</span><b id="kP">—</b></div>
+  </div>
+  <div class="pane tz-panel" style="grid-column:1/-1">
+    <h3>Crane cars — service state &amp; hours</h3>
+    <table><thead><tr><th>Asset</th><th>State</th><th>Sim status</th><th>Engine hrs</th><th>Busy hrs</th><th>Utilisation</th><th>Actions</th></tr></thead>
+    <tbody id="cars"></tbody></table>
+  </div>
+  <div class="pane tz-panel">
+    <h3 style="display:flex;justify-content:space-between;align-items:center">Lanes &amp; conveyors
+      <input id="laneFilter" placeholder="filter… (oos / A2 / EXIT)"></h3>
+    <div id="lanes-scroll"><table><thead><tr><th>Lane</th><th>Pallets</th><th>State</th><th>Actions</th></tr></thead>
+    <tbody id="lanes"></tbody></table></div>
+  </div>
+  <div class="pane tz-panel">
+    <h3>Fault &amp; maintenance log</h3><div id="flog"></div>
+    <div style="font-size:10px;color:var(--tz-muted);margin-top:8px;line-height:1.5">FAULT = failure (lane belt freezes / car halts where it stands, cargo aboard). LOCKOUT = graceful maintenance: the asset takes nothing new, drains or parks, and waits amber until RESTORED. The Brain routes around anything out of service.</div>
+  </div>
+  <div class="pane tz-panel" id="pmPane" style="grid-column:1/-1">
+    <h3 style="display:flex;justify-content:space-between;align-items:center">Predictive maintenance — part odometer &amp; fleet reliability
+      <span style="font-size:10px;color:var(--tz-muted);text-transform:none;letter-spacing:0">site clock <b id="pmSiteH" style="color:var(--tz-ink)">—</b> operating h · learned from <b id="pmFleetN" style="color:var(--tz-ink)">—</b> installations<button class="act" id="pmReseed" style="margin-left:10px">reseed demo</button></span></h3>
+    <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:20px">
+      <div>
+        <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--tz-muted);margin-bottom:4px">Fleet reliability — learned vs rated life (B10 operating-hours)</div>
+        <table><thead><tr><th>Part</th><th>Rated</th><th>Learned B10</th><th>Mean life</th><th>Fleet fails</th><th>This site</th></tr></thead><tbody id="pmFleet"></tbody></table>
+        <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--tz-muted);margin:15px 0 5px">Site part health <span style="text-transform:none;letter-spacing:0">(<span style="color:var(--tz-green,#3F9C35)">ok</span> / <span style="color:var(--tz-gold)">watch</span> / <span style="color:#e23c4b">due</span>)</span></div>
+        <div id="pmHealth" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      </div>
+      <div>
+        <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--tz-muted);margin-bottom:4px">Preventative schedule — replace before failure</div>
+        <div style="max-height:230px;overflow:auto"><table><thead><tr><th>Due</th><th>IDBM</th><th>Part</th><th>Life used</th><th></th></tr></thead><tbody id="pmSched"></tbody></table></div>
+        <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--tz-muted);margin:15px 0 5px">Drill-down — <input id="pmIdbmIn" placeholder="IDBM-0001" style="width:120px;font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--tz-brd);background:var(--tz-panel-solid);color:var(--tz-ink)"></div>
+        <div id="pmDrill" style="font-size:11px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  function cmd(o){ o.ts=Date.now(); try{localStorage.setItem('tz-cmd',JSON.stringify(o));}catch(e){} }
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+  const CHIP={ok:'<span class="chip ok">OK</span>',fault:'<span class="chip fault">FAULT</span>',lock:'<span class="chip lock">LOCKED</span>',dock:'<span class="chip dock">DOCK FAULT</span>'};
+  let sig='';
+  function tick(){ let s=null; try{ s=JSON.parse(localStorage.getItem('tz-live')||'null'); }catch(e){}
+    const stale=!s||Date.now()-s.t>6000; $('offline').style.display=stale?'block':'none'; pmTick(!stale); if(!s||!s.assets)return;
+    const A=s.assets, oosF=A.cars.filter(c=>c.st==='fault').length+A.lanes.filter(l=>l.st==='fault'||l.st==='dock').length;
+    const oosL=A.cars.filter(c=>c.st==='lock').length+A.lanes.filter(l=>l.st==='lock').length;
+    $('kF').textContent=oosF; $('kL').textContent=oosL;
+    $('kC').textContent=A.cars.filter(c=>c.st==='ok').length+'/'+A.cars.length;
+    $('kLn').textContent=A.lanes.length; $('kP').textContent=(s.stats&&(s.stats.arrived-s.stats.shipped))>=0?'≈'+(s.stats.arrived-s.stats.shipped):'—';
+    const filt=($('laneFilter').value||'').toLowerCase();
+    const lanes=A.lanes.filter(l=>{ if(!filt)return true; if(filt==='oos')return l.st!=='ok'; return l.id.toLowerCase().indexOf(filt)>=0; });
+    const top=lanes.filter(l=>l.st!=='ok').concat(lanes.filter(l=>l.st==='ok')).slice(0,60);
+    const newSig=JSON.stringify([A,filt]);
+    if(newSig!==sig){ sig=newSig;
+      $('cars').innerHTML=A.cars.map(c=>'<tr><td><b>'+c.id+'</b></td><td>'+CHIP[c.st]+'</td><td style="color:var(--tz-muted)">'+esc(c.state)+'</td>'+
+        '<td>'+c.hrs+'</td><td>'+c.busy+'</td><td>'+(c.hrs?Math.round(c.busy/c.hrs*100):0)+'%</td><td>'+
+        (c.st==='fault'?'<button class="act green" data-a="clearFault" data-id="'+c.id+'">CLEAR</button>':'<button class="act red" data-a="fault" data-k="CAR" data-id="'+c.id+'">INJECT FAULT</button>')+
+        (c.st==='lock'?'<button class="act green" data-a="restore" data-id="'+c.id+'">RESTORE</button>':'<button class="act amber" data-a="lockout" data-id="'+c.id+'">LOCKOUT</button>')+
+        '</td></tr>').join('');
+      $('lanes').innerHTML=top.map(l=>'<tr><td>'+esc(l.id)+'</td><td>'+l.n+'</td><td>'+CHIP[l.st]+'</td><td>'+
+        (l.st==='fault'||l.st==='dock'?'<button class="act green" data-a="clearFault" data-id="'+esc(l.id)+'">CLEAR</button>'
+          :'<button class="act red" data-a="fault" data-k="LANE" data-id="'+esc(l.id)+'">FAULT</button><button class="act red" data-a="fault" data-k="DOCK" data-id="'+esc(l.id)+'">DOCK</button>')+
+        (l.st==='lock'?'<button class="act green" data-a="restore" data-id="'+esc(l.id)+'">RESTORE</button>':'<button class="act amber" data-a="lockout" data-id="'+esc(l.id)+'">LOCKOUT</button>')+
+        '</td></tr>').join('')||'<tr><td colspan="4" style="color:var(--tz-muted)">no lanes match</td></tr>';
+      document.querySelectorAll('button.act').forEach(b=>b.onclick=()=>{ const a=b.getAttribute('data-a'), id=b.getAttribute('data-id');
+        if(a==='fault')cmd({fault:{kind:b.getAttribute('data-k'),id:id}});
+        else { const o={}; o[a]=id; cmd(o); } }); }
+    $('flog').innerHTML=(s.faultLog||[]).map(e=>'<div><span style="color:var(--tz-muted)">t+'+e.t+'s</span> '+esc(e.msg)+'</div>').join('')||'<div style="color:var(--tz-muted)">no events</div>';
+  }
+  // ===== PREDICTIVE MAINTENANCE FOUNDATION — part odometer · fleet reliability learning · preventative schedule =====
+  const PM_LIB=[ {key:'IDBM Belt',rated:18000,beta:2.4}, {key:'Drive Belt',rated:8000,beta:2.0},
+    {key:'Drive System Pulleys',rated:40000,beta:2.8}, {key:'Spline Screws',rated:25000,beta:2.2}, {key:'End Loops',rated:12000,beta:1.9} ];
+  const DUTY_HPD=16, ACCRUE=0.6;   // assumed operating-h/day (RUL→days) · demo accrual: operating-h added per real second while the sim is live
+  let PMF=null, PMO=null, pmLastRender=0, pmLastPersist=0;
+  function pmrng(seed){ let s=(seed>>>0)||1; return function(){ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
+  function fleetN(){ try{ const tl=JSON.parse(localStorage.getItem('tz-layout')||'null'); if(tl&&tl.data&&tl.data.instances)return Math.max(1,tl.data.instances.length); }catch(e){} return 1842; }
+  function pctl(a,p){ if(!a.length)return 0; const z=a.slice().sort((x,y)=>x-y); return z[Math.max(0,Math.min(z.length-1,Math.round(p*(z.length-1))))]; }
+  function seedFleet(){ const r=pmrng(20260615), sites=['AU-SYD-01','AU-MEL-02','US-DAL-07','DE-HAM-03','SG-JUR-05'], parts={};
+    PM_LIB.forEach(p=>{ const eta=p.rated/Math.pow(0.10536,1/p.beta), obs=[], n=24+Math.floor(r()*42);
+      for(let i=0;i<n;i++){ const u=Math.max(1e-4,r()); obs.push(Math.round(eta*Math.pow(-Math.log(u),1/p.beta))); }
+      parts[p.key]={rated:p.rated,beta:p.beta,obs:obs}; });
+    PMF={parts:parts,sites:sites,seededAt:Date.now()}; try{localStorage.setItem('tz-pm-fleet',JSON.stringify(PMF));}catch(e){} return PMF; }
+  function seedOdo(){ const n=fleetN(), r=pmrng(99001+n), idbms={};
+    for(let i=1;i<=n;i++){ const id='IDBM-'+String(i).padStart(4,'0'), rec={};
+      PM_LIB.forEach(p=>{ const frac=Math.pow(r(),1.7)*1.06; rec[p.key]={installH:-Math.round(frac*p.rated),repl:0}; }); idbms[id]=rec; }
+    PMO={siteHours:0,n:n,idbms:idbms,seededAt:Date.now()}; try{localStorage.setItem('tz-pm-odo',JSON.stringify(PMO));}catch(e){} return PMO; }
+  function pmFleet(){ if(PMF)return PMF; try{PMF=JSON.parse(localStorage.getItem('tz-pm-fleet')||'null');}catch(e){} return PMF||seedFleet(); }
+  function pmOdo(){ if(PMO&&PMO.n===fleetN())return PMO; try{PMO=JSON.parse(localStorage.getItem('tz-pm-odo')||'null');}catch(e){} if(!PMO||PMO.n!==fleetN())PMO=seedOdo(); return PMO; }
+  function pmPersist(force){ const now=Date.now(); if(!force&&now-pmLastPersist<8000)return; pmLastPersist=now; try{localStorage.setItem('tz-pm-odo',JSON.stringify(PMO));}catch(e){} }
+  function b10(fp){ return fp.obs&&fp.obs.length?Math.round(pctl(fp.obs,0.10)):fp.rated; }
+  function meanL(fp){ return fp.obs&&fp.obs.length?Math.round(fp.obs.reduce((a,b)=>a+b,0)/fp.obs.length):fp.rated; }
+  function curH(part,sh){ return Math.max(0,sh-part.installH); }
+  function band(f){ return f>=0.85?'red':f>=0.7?'amber':'ok'; }
+  function pmTick(live){ const odo=pmOdo(), now=Date.now();
+    if(live){ const dt=Math.min(5,(now-(odo._lr||now))/1000); odo.siteHours+=dt*ACCRUE; pmPersist(false); } odo._lr=now;
+    if(now-pmLastRender<1500)return; pmLastRender=now; pmRender(); }
+  function pmRender(){ const fleet=pmFleet(), odo=pmOdo(), sh=odo.siteHours, ids=Object.keys(odo.idbms), el=id=>document.getElementById(id); if(!el('pmFleet'))return;
+    el('pmSiteH').textContent=Math.round(sh).toLocaleString(); el('pmFleetN').textContent=fleet.sites.length;
+    const health={}; PM_LIB.forEach(p=>health[p.key]={ok:0,amber:0,red:0}); const sched=[];
+    ids.forEach(id=>{ const rec=odo.idbms[id]; PM_LIB.forEach(p=>{ const part=rec[p.key]; if(!part)return;
+      const pl=b10(fleet.parts[p.key]), h=curH(part,sh), frac=h/pl, bd=band(frac); health[p.key][bd]++;
+      if(bd!=='ok')sched.push({id:id,part:p.key,frac:frac,days:Math.max(0,Math.round((pl-h)/DUTY_HPD))}); }); });
+    el('pmFleet').innerHTML=PM_LIB.map(p=>{ const fp=fleet.parts[p.key], B=b10(fp), M=meanL(fp), hh=health[p.key];
+      const dl=B<p.rated?' <span style="color:#e23c4b">▼</span>':(B>p.rated?' <span style="color:var(--tz-green,#3F9C35)">▲</span>':'');
+      const sc=hh.red?'<span class="chip fault" style="animation:none">'+hh.red+' due</span>':(hh.amber?'<span class="chip lock">'+hh.amber+' watch</span>':'<span class="chip ok">all ok</span>');
+      return '<tr><td><b>'+p.key+'</b></td><td>'+p.rated.toLocaleString()+'</td><td>'+B.toLocaleString()+dl+'</td><td>'+M.toLocaleString()+'</td><td>'+fp.obs.length+'</td><td>'+sc+'</td></tr>'; }).join('');
+    el('pmHealth').innerHTML=PM_LIB.map(p=>{ const hh=health[p.key]; return '<div style="border:1px solid var(--tz-brd);border-radius:8px;padding:6px 10px;min-width:104px"><div style="font-size:10px;font-weight:700;margin-bottom:2px">'+p.key+'</div><div style="font-size:12px;font-variant-numeric:tabular-nums"><span style="color:var(--tz-green,#3F9C35)">'+hh.ok+'</span> / <span style="color:var(--tz-gold)">'+hh.amber+'</span> / <span style="color:#e23c4b">'+hh.red+'</span></div></div>'; }).join('');
+    sched.sort((a,b)=>b.frac-a.frac);
+    el('pmSched').innerHTML=sched.slice(0,50).map(s=>{ const od=s.frac>=1; return '<tr><td>'+(od?'<span class="chip fault" style="animation:none">OVERDUE</span>':'<b>'+s.days+'d</b>')+'</td><td>'+s.id+'</td><td>'+s.part+'</td><td>'+Math.round(s.frac*100)+'%</td><td><button class="act green" data-pm="repl" data-id="'+s.id+'" data-part="'+esc(s.part)+'">REPLACE</button></td></tr>'; }).join('')||'<tr><td colspan="5" style="color:var(--tz-muted)">all parts within healthy life</td></tr>';
+    el('pmSched').querySelectorAll('[data-pm=repl]').forEach(b=>b.onclick=()=>pmReplace(b.getAttribute('data-id'),b.getAttribute('data-part')));
+    pmDrill(); }
+  function pmReplace(id,part){ const odo=pmOdo(), fleet=pmFleet(), rec=odo.idbms[id]; if(!rec||!rec[part])return;
+    const pl=b10(fleet.parts[part]), h=curH(rec[part],odo.siteHours);
+    if(h>=pl){ fleet.parts[part].obs.push(Math.round(h)); try{localStorage.setItem('tz-pm-fleet',JSON.stringify(fleet));}catch(e){} }   // ran past its B10 → a real failure datum the fleet learns from
+    rec[part].installH=odo.siteHours; rec[part].repl=(rec[part].repl||0)+1; pmPersist(true); pmLastRender=0; pmRender(); }
+  function pmDrill(){ const odo=pmOdo(), fleet=pmFleet(), el=document.getElementById('pmDrill'); if(!el)return;
+    let id=(document.getElementById('pmIdbmIn').value||'').trim().toUpperCase(); if(id&&!/^IDBM-/.test(id))id='IDBM-'+id.replace(/\D/g,'').padStart(4,'0');
+    const rec=id&&odo.idbms[id]; if(!rec){ el.innerHTML='<span style="color:var(--tz-muted)">enter an IDBM id (e.g. IDBM-0007) to see every part on it</span>'; return; }
+    el.innerHTML='<table><thead><tr><th>Part</th><th>Odometer</th><th>B10</th><th>Life used</th><th>RUL</th><th></th></tr></thead><tbody>'+PM_LIB.map(p=>{
+      const part=rec[p.key], fp=fleet.parts[p.key], pl=b10(fp), h=curH(part,odo.siteHours), frac=h/pl, bd=band(frac), rul=Math.max(0,Math.round((pl-h)/DUTY_HPD));
+      const chip=bd==='red'?'<span class="chip fault" style="animation:none">'+(frac>=1?'OVERDUE':'DUE')+'</span>':bd==='amber'?'<span class="chip lock">WATCH</span>':'<span class="chip ok">OK</span>';
+      return '<tr><td>'+p.key+(part.repl?' <span style="color:var(--tz-muted)">(×'+part.repl+')</span>':'')+'</td><td>'+Math.round(h).toLocaleString()+' h</td><td>'+pl.toLocaleString()+'</td><td>'+Math.round(frac*100)+'% '+chip+'</td><td>'+(frac>=1?'—':rul+' d')+'</td><td><button class="act green" data-pm="repl" data-id="'+id+'" data-part="'+esc(p.key)+'">REPLACE</button></td></tr>'; }).join('')+'</tbody></table>';
+    el.querySelectorAll('[data-pm=repl]').forEach(b=>b.onclick=()=>pmReplace(b.getAttribute('data-id'),b.getAttribute('data-part'))); }
+  { const rs=document.getElementById('pmReseed'); if(rs)rs.onclick=()=>{ localStorage.removeItem('tz-pm-fleet'); localStorage.removeItem('tz-pm-odo'); PMF=null; PMO=null; seedFleet(); seedOdo(); pmLastRender=0; pmRender(); };
+    const di=document.getElementById('pmIdbmIn'); if(di)di.oninput=()=>pmDrill(); }
+  tick(); setInterval(tick,700);
+})();
+</script>
+</body>
+</html>

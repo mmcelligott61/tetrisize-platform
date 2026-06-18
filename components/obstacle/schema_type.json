@@ -1,0 +1,26 @@
+{
+  "typeId": "obstacle",
+  "name": "Obstacle (keep-out)",
+  "category": "obstacle",
+  "status": "DRAFT - box form (rectangle footprint); schema section 2 supports a footprint polygon. Placeholder size.",
+  "params": [
+    { "key": "obstacle.width",  "type": "number", "default": 600, "units": "mm", "desc": "Footprint width (local X)." },
+    { "key": "obstacle.depth",  "type": "number", "default": 600, "units": "mm", "desc": "Footprint depth (local Y)." },
+    { "key": "obstacle.height", "type": "number", "default": 4000, "units": "mm", "desc": "Keep-out height (Z)." },
+    { "key": "obstacle.kind",   "type": "enum", "default": "column", "options": ["column", "wall", "machine"], "desc": "Obstacle kind (schema section 2)." }
+  ],
+  "geometry": {
+    "note": "Keep-out box (rectangle footprint x height). schema section 2 Obstacle = footprintPolygon[] + height; rectangle is the simple case.",
+    "frame": "Datum = pose {position,yaw} at base centre; local X = width, Y = depth, Z up.",
+    "colours": "column/wall/machine = neutral greys; full LOD adds a hazard-amber cap."
+  },
+  "connectionPoints": [],
+  "datum": { "kind": "pose", "form": "{ position:[x,y,z] mm, yaw rad }" },
+  "defaults": { "obstacle.width": 600, "obstacle.depth": 600, "obstacle.height": 4000, "obstacle.kind": "column" },
+  "meta": {
+    "author": "component-authoring session (parallel)",
+    "kinds": ["column", "wall", "machine"],
+    "references": ["coordinate_frame_and_component_schema_v0.1.md section 2 (Obstacle)"],
+    "remainingAssumptions": "rectangle vs polygon footprint; default sizes; hazard styling."
+  }
+}

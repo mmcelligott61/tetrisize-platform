@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tetrisize Platform — Brain Ops</title>
+<link rel="stylesheet" href="ui_kit.css">
+<script>window.TZ_SCREEN='brainops';</script>
+<script src="ui_kit.js"></script>
+<style>
+  *{box-sizing:border-box} html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  body{background:radial-gradient(130% 130% at 50% 0%,var(--tz-bg1),var(--tz-bg2));color:var(--tz-ink)}
+  #wrap{max-width:1280px;margin:0 auto;padding:74px 22px 30px;display:grid;grid-template-columns:1fr 1fr 360px;gap:14px}
+  .pane{padding:15px 17px}
+  .pane h3{margin:0 0 10px;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tz-muted)}
+  #offline{grid-column:1/-1;display:none;padding:12px 16px;color:var(--tz-orange);font-weight:700;font-size:13px}
+  .kpis{grid-column:1/-1;display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+  .kpi{padding:13px 16px}.kpi b{font-size:24px;display:block;font-variant-numeric:tabular-nums}
+  .kpi span{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--tz-muted)}
+  .bar{height:13px;border-radius:7px;background:var(--tz-brd);overflow:hidden;margin:4px 0 10px}
+  .bar i{display:block;height:100%;border-radius:7px;transition:width .5s}
+  .brow{display:flex;justify-content:space-between;font-size:11.5px}.brow b{font-variant-numeric:tabular-nums}
+  .carcard{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--tz-brd);font-size:12px}
+  .carcard:first-of-type{border-top:none}
+  .cardot{width:9px;height:9px;border-radius:50%;flex:none}
+  .seg{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+  .seg button{cursor:pointer;font-size:10px;font-weight:700;padding:5px 9px;border-radius:7px;border:1px solid var(--tz-brd);background:var(--tz-panel-solid);color:var(--tz-ink)}
+  .seg button.on{background:var(--tz-accent);border-color:var(--tz-accent);color:#fff}
+  #log{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;line-height:1.6;max-height:300px;overflow:auto}
+  #log div{border-top:1px solid var(--tz-brd);padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #grid{display:grid;grid-template-columns:repeat(25,1fr);gap:2px}
+  #grid i{display:block;aspect-ratio:1;border-radius:2px;background:var(--tz-brd)}
+  .gridlbl{font-size:9.5px;color:var(--tz-muted);margin:6px 0 2px}
+  .invrow{display:flex;align-items:center;gap:8px;border-top:1px solid var(--tz-brd);padding:6px 0;font-size:12px}
+  .invrow:first-child{border-top:none}
+  .invrow .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .invrow .qty{font-variant-numeric:tabular-nums;color:var(--tz-muted)}
+  .invrow input{width:46px;font-size:11px;padding:4px 6px;border-radius:6px;border:1px solid var(--tz-brd);background:var(--tz-panel-solid);color:var(--tz-ink)}
+  .invrow button{cursor:pointer;font-size:9.5px;font-weight:700;padding:5px 8px;border-radius:6px;border:1px solid var(--tz-accent);background:var(--tz-accent);color:#fff}
+  .invrow button:disabled{opacity:.4;cursor:default}
+  #orderbar .ob{padding:8px 10px;border-radius:8px;border:1px solid var(--tz-accent);font-size:11.5px;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="offline" class="tz-panel">SIM OFFLINE — open the Viewer 3D tab to drive the facility; this dashboard reconstructs live from the lane reports.</div>
+  <div class="kpis">
+    <div class="kpi tz-panel"><span>Arrived</span><b id="kIn">—</b></div>
+    <div class="kpi tz-panel"><span>Sorted</span><b id="kSort">—</b></div>
+    <div class="kpi tz-panel"><span>Shipped</span><b id="kOut">—</b></div>
+    <div class="kpi tz-panel"><span>Refined</span><b id="kRef">—</b></div>
+    <div class="kpi tz-panel"><span>Array 1</span><b id="kO1">—</b></div>
+    <div class="kpi tz-panel"><span>Array 2</span><b id="kO2">—</b></div>
+  </div>
+  <div class="pane tz-panel">
+    <h3>Storage density</h3>
+    <div class="brow"><span>ARRAY 1 (random buffer)</span><b id="o1t">—</b></div><div class="bar"><i id="o1b" style="background:var(--tz-cyan)"></i></div>
+    <div class="brow"><span>ARRAY 2 (sorted)</span><b id="o2t">—</b></div><div class="bar"><i id="o2b" style="background:var(--tz-gold)"></i></div>
+    <div id="levels"></div>
+    <h3 style="margin-top:14px">Colour zones</h3><div id="zones"></div>
+    <h3 style="margin-top:14px">Array 2 inventory — order pull</h3>
+    <div id="orderbar"></div>
+    <div id="inv"></div>
+    <div style="font-size:10px;color:var(--tz-muted);margin-top:6px;line-height:1.5">EVACUATE pulls <b>exactly N</b> of a product, oldest first (FIFO by manufactured date), and ships them — the remainder stays in storage.</div>
+  </div>
+  <div class="pane tz-panel">
+    <h3>Strategy</h3>
+    <div class="seg" id="strat">
+      <button data-s="fast">FAST + REFINE</button><button data-s="fifo">FIFO (mfg date)</button>
+      <button data-s="consol">CONSOLIDATE</button></div>
+    <h3>Data source</h3>
+    <div class="seg" id="data">
+      <button data-d="random">RANDOM</button><button data-d="100">100 ITEMS</button><button data-d="1000">1000 ITEMS</button></div>
+    <h3 style="margin-top:6px">Shipping gate</h3>
+    <div class="seg"><button id="gateB">—</button></div>
+    <h3 style="margin-top:6px">Crane cars</h3><div id="cars"></div>
+    <h3 style="margin-top:12px">Reconstructed warehouse map</h3>
+    <div class="gridlbl">ARRAY 1 — pallets per lane (ground→top stacked)</div><div id="grid"></div>
+    <div class="gridlbl" style="margin-top:6px">ARRAY 2</div><div id="grid2" style="display:grid;grid-template-columns:repeat(25,1fr);gap:2px"></div>
+    <div style="font-size:10px;color:var(--tz-muted);margin-top:8px;line-height:1.5">This entire dashboard is rendered <b>solely from the per-lane reports</b> — the supervisory picture is reconstructable from each IDBM group's own memory (redundant-identity principle).</div>
+  </div>
+  <div class="pane tz-panel">
+    <h3>Live order log</h3><div id="log"></div>
+  </div>
+</div>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const ZC={RED:'#E03C31',WHITE:'#cfcabb',BLUE:'#006B8F',GREEN:'#3F9C35',TAN:'#EAAB00'};
+  function cmd(o){ o.ts=Date.now(); try{localStorage.setItem('tz-cmd',JSON.stringify(o));}catch(e){} }
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+  let invSig='';
+  document.querySelectorAll('#strat button').forEach(b=>b.onclick=()=>cmd({strategy:b.getAttribute('data-s')}));
+  document.querySelectorAll('#data button').forEach(b=>b.onclick=()=>cmd({dataset:b.getAttribute('data-d')}));
+  function pct(v){ return Math.round(v*100)+'%'; }
+  function tick(){ let s=null; try{ s=JSON.parse(localStorage.getItem('tz-live')||'null'); }catch(e){}
+    const stale=!s||Date.now()-s.t>6000; $('offline').style.display=stale?'block':'none'; if(!s)return;
+    $('kIn').textContent=s.stats.arrived; $('kSort').textContent=s.stats.sorted; $('kOut').textContent=s.stats.shipped; $('kRef').textContent=s.stats.refined||0;
+    $('kO1').textContent=pct(s.occ.a1); $('kO2').textContent=pct(s.occ.a2);
+    $('o1t').textContent=pct(s.occ.a1)+(s.latches.car2?' · sorter ON':' · sorter waits '+pct(s.latches.latch2));
+    $('o2t').textContent=pct(s.occ.a2)+(s.latches.car3?' · shipping ON':' · shipping waits '+pct(s.latches.latch3));
+    $('o1b').style.width=pct(s.occ.a1); $('o2b').style.width=pct(s.occ.a2);
+    $('levels').innerHTML=(s.levels||[]).map(l=>'<div class="brow"><span>Level '+l.lv+'</span><b>'+pct(l.occ)+'</b></div><div class="bar"><i style="width:'+pct(l.occ)+';background:var(--tz-blue)"></i></div>').join('');
+    $('zones').innerHTML=(s.zones||[]).map(z=>'<div class="brow"><span>'+z.cat+'</span><b>'+pct(z.occ)+'</b></div><div class="bar"><i style="width:'+pct(z.occ)+';background:'+(ZC[z.cat]||'#888')+'"></i></div>').join('');
+    document.querySelectorAll('#strat button').forEach(b=>b.classList.toggle('on',b.getAttribute('data-s')===s.strategy));
+    document.querySelectorAll('#data button').forEach(b=>b.classList.toggle('on',(s.dataset?String(s.dataset.total===100?'100':'1000'):'random')===b.getAttribute('data-d')));
+    $('cars').innerHTML=(s.cars||[]).map(c=>'<div class="carcard"><span class="cardot" style="background:'+(c.aboard?'var(--tz-cyan)':(c.state==='idle'?'var(--tz-brd)':'var(--tz-gold)'))+'"></span><b>CRANE-'+(c.i+1)+'</b><span style="color:var(--tz-muted)">'+c.mode+' · '+c.state+'</span><span style="margin-left:auto">'+c.aboard+'/6'+(c.z>300?' · lifted':'')+'</span><div style="flex-basis:100%;font-size:10.5px;color:var(--tz-muted)">'+(c.label||'')+'</div></div>').join('');
+    const a1=(s.lanes||[]).filter(l=>l.id.indexOf('A1')===0), a2=(s.lanes||[]).filter(l=>l.id.indexOf('A2')===0);
+    $('grid').innerHTML=a1.map(l=>'<i title="'+l.id+' · '+l.n+'" style="background:'+(l.n?'rgba(0,174,239,'+Math.min(1,.15+l.n/13)+')':'var(--tz-brd)')+'"></i>').join('');
+    $('grid2').innerHTML=a2.map(l=>'<i title="'+l.id+' · '+l.n+'" style="background:'+(l.n?'rgba(234,171,0,'+Math.min(1,.2+l.n/13)+')':'var(--tz-brd)')+'"></i>').join('');
+    $('orderbar').innerHTML=(s.order?('<div class="ob">EVACUATING <b>'+s.order.n+' × '+esc(s.order.prod)+'</b> — pulled '+s.order.pulled+'/'+s.order.n+'</div>'):'')+
+      (s.stage?('<div class="ob" style="border-color:var(--tz-gold)">STAGING <b>'+s.stage.n+' × '+esc(s.stage.prod)+'</b> — '+s.stage.staged+'/'+s.stage.n+
+        (s.stage.ready?' · <b>READY AT THE DOCK</b>':'')+' <button id="relBtn" style="cursor:pointer;font-size:9.5px;font-weight:700;padding:4px 9px;border-radius:6px;border:1px solid var(--tz-gold);background:var(--tz-gold);color:#222;margin-left:8px">RELEASE</button></div>'):'');
+    const rb=document.getElementById('relBtn'); if(rb)rb.onclick=()=>cmd({release:1});
+    const gb=$('gateB'); if(gb){ gb.textContent=(s.gate==='closed')?'⛔ GATE CLOSED — click to open & drain':'🟢 GATE OPEN — click to close & build backlog';
+      gb.classList.toggle('on',s.gate==='closed'); gb.onclick=()=>cmd({gate:(s.gate==='closed')?'open':'closed'}); }
+    const sig=JSON.stringify([s.inv,!!s.order,!!s.stage]);
+    if(sig!==invSig){ invSig=sig;
+      $('inv').innerHTML=(s.inv&&s.inv.length)?s.inv.map((r,i)=>'<div class="invrow"><span class="nm" title="'+esc(r.prod)+'">'+esc(r.prod)+'</span><span class="qty">'+r.qty+'</span>'+
+        '<input type="number" min="1" max="'+r.qty+'" placeholder="N" id="invN'+i+'">'+
+        '<button data-i="'+i+'" data-p="'+esc(r.prod)+'" data-q="'+r.qty+'"'+(s.order?' disabled':'')+'>EVACUATE</button>'+
+        '<button class="stg" data-i="'+i+'" data-p="'+esc(r.prod)+'" data-q="'+r.qty+'"'+(s.stage?' disabled':'')+' style="border-color:var(--tz-gold);background:var(--tz-gold);color:#222" title="Pull to the exit dock and HOLD for the truck">STAGE</button></div>').join('')
+        :'<div style="font-size:11px;color:var(--tz-muted)">Array 2 is empty.</div>';
+      document.querySelectorAll('#inv button').forEach(b=>b.onclick=()=>{ const i=b.getAttribute('data-i');
+        const n=Math.max(1,Math.min(+($('invN'+i).value||b.getAttribute('data-q')),+b.getAttribute('data-q')));
+        cmd(b.classList.contains('stg')?{stage:{prod:b.getAttribute('data-p'),n:n}}:{evacuate:{prod:b.getAttribute('data-p'),n:n}}); }); }
+    $('log').innerHTML=(s.log||[]).map(l=>'<div>'+(l.msg||l)+'</div>').join('');
+  }
+  tick(); setInterval(tick,700);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+{
+  "typeId": "rack",
+  "name": "Rack (IDBM storage)",
+  "category": "racking",
+  "categoryNote": "PROPOSED composite category 'racking' = schema section 2 racking_upright + racking_beam, assembled. Main session merges (or decompose into the granular categories).",
+  "status": "DRAFT - placeholder dimensions; confirm with Mike.",
+  "params": [
+    { "key": "rack.bays",        "type": "number", "default": 3, "min": 1, "units": "count", "desc": "Bays along X (the aisle run)." },
+    { "key": "rack.lanesPerBay", "type": "number", "default": 4, "min": 1, "units": "count", "desc": "IDBM lanes per bay; total lanes = bays x lanesPerBay." },
+    { "key": "rack.levels",      "type": "number", "default": 4, "min": 1, "units": "count", "desc": "Storage levels (Z)." },
+    { "key": "rack.levelPitch",  "type": "number", "default": 2000, "units": "mm", "desc": "Vertical pitch between levels." },
+    { "key": "bed.idbmLength",   "type": "number", "default": 2500, "units": "mm", "desc": "Lane depth (local Y) = IDBM length." },
+    { "key": "upright.section",  "type": "number", "default": 100, "units": "mm", "assumption": true, "desc": "Square upright post section." },
+    { "key": "beam.section",     "type": "number", "default": 100, "units": "mm", "assumption": true, "desc": "Beam section." },
+    { "key": "base.height",      "type": "number", "default": 150, "units": "mm", "assumption": true, "desc": "Lowest beam (level 0) height above floor." }
+  ],
+  "kinematics": { "drivableAxes": "none", "note": "Fixed structure (no motion)." },
+  "derived": {
+    "lanes.total": "rack.bays x rack.lanesPerBay",
+    "rack.width": "lanes.total x 300 (X)",
+    "bay.width": "rack.lanesPerBay x 300",
+    "rack.depth": "bed.idbmLength (Y)",
+    "rack.height": "base.height + rack.levels x rack.levelPitch (Z)"
+  },
+  "geometry": {
+    "note": "Canonical parametric form (mm). Mirrors the IDBM geometry-block pattern (schema section 2).",
+    "frame": "Datum = pose {position,yaw} at near-bottom-centre. local X = bays/aisle run; local Y = lane depth; Z up.",
+    "uprights": "(bays+1) upright frames at local x = -width/2 + i*bayWidth; each = 2 posts (front -Y, back +Y) of upright.section, floor to rack.height.",
+    "beams": "front & back beams along X at each level z = base.height + k*levelPitch (k=0..levels-1).",
+    "lanes": "each level carries lanes.total IDBMs at 300 mm pitch along X, each idbmLength deep along Y, resting on the beams. Reuses the shared IDBM drawer.",
+    "colours": "Uprights + beams = muted blue-grey (0x415a77); IDBMs unchanged.",
+    "rule": "IDBM module is FIXED (width 300, height 200). Bays, lanes, levels, pitch and depth all scale from the params."
+  },
+  "connectionPoints": [
+    { "id": "face_pick", "face": "sideL", "offset": [0, -1, 0], "kind": "transfer", "desc": "-Y rack face: lane ends a Crane/Shuttle/AGV transfers to (per level)." }
+  ],
+  "datum": { "kind": "pose", "form": "{ position:[x,y,z] mm, yaw rad }" },
+  "defaults": { "rack.bays": 3, "rack.lanesPerBay": 4, "rack.levels": 4, "rack.levelPitch": 2000, "bed.idbmLength": 2500, "upright.section": 100, "beam.section": 100, "base.height": 150 },
+  "meta": {
+    "author": "component-authoring session (parallel)",
+    "form": "selective rack: uprights + beams + IDBM lanes",
+    "references": ["coordinate_frame_and_component_schema_v0.1.md section 2 (racking_upright, racking_beam)", "viewer_3d.html drawIdbm()"],
+    "remainingAssumptions": "section sizes, base.height, whether lanes are full-depth or paired, colour. Appearance to be revisited."
+  }
+}

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tetrisize Platform</title>
+<link rel="stylesheet" href="ui_kit.css">
+<script>window.TZ_SCREEN='home';</script>
+<script src="ui_kit.js"></script>
+<style>
+  *{box-sizing:border-box} html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  body{background:radial-gradient(130% 130% at 50% 0%,var(--tz-bg1),var(--tz-bg2));color:var(--tz-ink)}
+  #wrap{max-width:1060px;margin:0 auto;padding:96px 28px 40px}
+  h1{font-family:'Pirulen',sans-serif;font-size:30px;letter-spacing:.06em;margin:0 0 6px;color:var(--tz-ink)}
+  h1 b{color:var(--tz-accent)}
+  .lead{color:var(--tz-muted);font-size:14.5px;line-height:1.6;max-width:680px;margin:0 0 34px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px}
+  .card{display:block;text-decoration:none;color:var(--tz-ink);padding:22px 22px 18px;border-radius:16px;position:relative;overflow:hidden}
+  .card h3{margin:0 0 7px;font-size:16px;letter-spacing:.02em}
+  .card p{margin:0;color:var(--tz-muted);font-size:12.5px;line-height:1.55}
+  .card .bar{position:absolute;left:0;top:0;bottom:0;width:5px}
+  .card.live:hover{transform:translateY(-2px);transition:transform .15s}
+  .card.soon{opacity:.55;cursor:default}
+  .card .pill{position:absolute;top:14px;right:14px;font-size:9px;letter-spacing:.08em;border-radius:99px;padding:3px 8px;background:var(--tz-accent);color:#fff}
+  .card.soon .pill{background:var(--tz-brd);color:var(--tz-muted)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>TETRISIZE <b>PLATFORM</b></h1>
+  <p class="lead">Design a facility in the Configurator, watch it run on real IDBM physics in the Viewer,
+  and let the Brain prove the throughput — storage density, true line speeds, and your own product data,
+  end to end in one program.</p>
+  <div class="grid">
+    <a class="card tz-panel live" href="configurator_idbm_v0.2.html"><span class="bar" style="background:var(--tz-gold)"></span>
+      <span class="pill">LIVE</span><h3>Configurator</h3><p>Lay out IDBM arrays, multi-level racking bays, cranes and corridors. Exports the layout the whole platform runs on.</p></a>
+    <a class="card tz-panel live" href="viewer_3d.html"><span class="bar" style="background:var(--tz-cyan)"></span>
+      <span class="pill">LIVE</span><h3>Viewer 3D</h3><p>The facility running on the real engine — modes, cranes, flow, true speeds. ViewCube navigation, layer ghosting, 1–50&times; time control.</p></a>
+    <a class="card tz-panel live" href="brainops.html"><span class="bar" style="background:var(--tz-green)"></span>
+      <span class="pill">LIVE</span><h3>Brain Ops</h3><p>Live operations dashboard — occupancy by array, level and colour zone, crane status, strategy control, and the warehouse map reconstructed purely from lane reports.</p></a>
+    <a class="card tz-panel live" href="maintenance.html"><span class="bar" style="background:#e23c4b"></span>
+      <span class="pill">LIVE</span><h3>Maintenance</h3><p>Faults, lockouts and service hours — inject failures, watch the Brain route around them, restore to service. The portal for when things go wrong.</p></a>
+    <a class="card tz-panel live" href="benchmark.html"><span class="bar" style="background:var(--tz-cyan)"></span>
+      <span class="pill">LIVE</span><h3>Benchmark</h3><p>Run a proposed project through standard trials — throughput, saturation &amp; drain, order SLA, degraded mode — and A/B compare tuning decisions with honest KPIs.</p></a>
+    <a class="card tz-panel live" href="reports.html"><span class="bar" style="background:var(--tz-orange)"></span>
+      <span class="pill">LIVE</span><h3>Reports</h3><p>Cumulative flow and storage-density history for the running session.</p></a>
+    <a class="card tz-panel live" href="commissioning.html"><span class="bar" style="background:var(--tz-blue)"></span>
+      <span class="pill">LIVE</span><h3>Commissioning</h3><p>The full site suite — sign in, run the 11-gate commissioning wizard, live array operations, alarms with 3D fault locator, maintenance, shift reports and audit trail. Demo login: admin / password.</p></a>
+  </div>
+</div>
+</body>
+</html>

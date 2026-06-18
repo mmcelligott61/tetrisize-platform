@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tetrisize — Rack (IDBM storage)</title>
+<!-- rack.html — standalone artifact. Contract is INLINED verbatim from rack.js (the
+     canonical file the main session integrates) so it renders even when a preview can't fetch
+     siblings. Conventions: schema in mm, renderer in metres (M=0.001), Z-up, right-handed. -->
+<style>
+  :root{--bg1:#eef2f7;--bg2:#dbe4f0;--ink:#1f2a37;--muted:#5b6b7c;--panel:rgba(255,255,255,0.9);--brd:rgba(20,40,70,0.12);--accent:#2b6cff;--shadow:0 8px 30px rgba(20,40,70,0.12)}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink)}
+  #app{position:fixed;inset:0;background:radial-gradient(130% 130% at 50% 0%,var(--bg1),var(--bg2))}
+  #scene{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}#scene:active{cursor:grabbing}
+  .panel{position:absolute;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--brd);border-radius:13px;box-shadow:var(--shadow);padding:13px 15px;user-select:none}
+  #title{top:16px;left:16px;max-width:330px}#title h1{margin:0;font-size:16px}#title h1 b{color:var(--accent)}
+  #title p{margin:4px 0 0;font-size:11.5px;color:var(--muted);line-height:1.45}
+  #title .warn{margin-top:6px;font-size:11px;font-weight:600;color:#b25400}
+  #info{top:16px;right:16px;width:230px}
+  #info .lbl{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .irow{display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px solid rgba(20,40,70,.07)}
+  .irow:first-of-type{border-top:none}.irow span:first-child{color:var(--muted)}.irow b{font-variant-numeric:tabular-nums}
+  #ctl{bottom:16px;left:16px;display:flex;gap:7px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 32px)}
+  #ctl .grp{display:flex;gap:5px;align-items:center;padding-right:7px;border-right:1px solid var(--brd)}
+  #ctl .grp:last-child{border-right:none}
+  button.ui{cursor:pointer;border:1px solid var(--brd);background:#fff;color:var(--ink);font-size:12px;font-weight:600;padding:7px 10px;border-radius:9px}
+  button.ui:hover{border-color:var(--accent);color:var(--accent)}
+  button.ui.on{border-color:var(--accent);color:#fff;background:var(--accent)}
+  #hint{bottom:16px;left:50%;transform:translateX(-50%);font-size:11.5px;color:var(--muted);border-radius:999px;padding:7px 14px}#hint b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="scene"></canvas>
+  <div class="panel" id="title"><h1>TETRISIZE <b>Rack (IDBM storage)</b></h1>
+    <p>Fixed multi-level array of IDBM lanes the Crane/Shuttle/AGV serve: uprights + beams + IDBM lanes, parametric in bays × levels. Drag orbit · scroll zoom · right-drag pan.</p>
+    <p class="warn">Placeholder dimensions; proposed 'racking' category. Appearance to be revisited. See spec.md.</p></div>
+  <div class="panel" id="info"><div class="lbl">Rack — mm</div><div id="infoBody"></div></div>
+  <div class="panel" id="ctl"><div class="grp"><button class="ui" id="reset">Reset view</button></div><div class="grp"><button class="ui" id="lodAuto">Auto LOD</button><button class="ui" id="lodFull">Full</button><button class="ui" id="lodMed">Med</button><button class="ui" id="lodSimple">Simple</button></div></div>
+  <div class="panel" id="hint"><b>Drag</b> orbit · <b>Scroll</b> zoom · <b>Right-drag</b> pan</div>
+</div>
+
+<script>
+/* =================== SHARED HARNESS (from _TEMPLATE_component.html) ====================== *//* Verbatim except two lines marked  // [showcase]  — they do not affect crane.js.          */
+const TZ = (function(){
+  const cv=document.getElementById('scene'),ctx=cv.getContext('2d'),M=0.001;
+  let CW=0,CH=0,ORX=0,ORY=0,DPR=Math.min(window.devicePixelRatio||1,2);
+  const cam={az:0.86,el:0.62,S:30,zoom:1,panX:0,panY:0};
+  let CX=0,CY=0,CZ=0, scene=[], registry={}, dragging=false,zT;
+  function resize(){CW=cv.clientWidth;CH=cv.clientHeight;cv.width=CW*DPR;cv.height=CH*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);ORX=CW*.5;ORY=CH*.5;}
+  addEventListener('resize',()=>{resize();render();});resize();
+  function project(x,y,z){const dx=x-CX,dy=CY-y,dz=z-CZ,ca=Math.cos(cam.az),sa=Math.sin(cam.az);   // metres, Z-up, +Y up
+    const rx=dx*ca-dy*sa,G=dx*sa+dy*ca,sy=G*Math.sin(cam.el)-dz*Math.cos(cam.el);
+    return [ORX+rx*cam.S*cam.zoom+cam.panX,ORY+sy*cam.S*cam.zoom+cam.panY];}
+  function depth(x,y){const dx=x-CX,dy=CY-y;return dx*Math.sin(cam.az)+dy*Math.cos(cam.az);}
+  const shade=(hex,f)=>{const r=(hex>>16)&255,g=(hex>>8)&255,b=hex&255,m=v=>Math.max(0,Math.min(255,v*f|0));return `rgb(${m(r)},${m(g)},${m(b)})`;};
+  function quad(p,fill){ctx.beginPath();ctx.moveTo(p[0][0],p[0][1]);for(let i=1;i<4;i++)ctx.lineTo(p[i][0],p[i][1]);ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle='rgba(22,32,48,0.14)';ctx.lineWidth=1;ctx.stroke();}
+  // oriented box (metres): centre cx,cy ; zb..zt ; along/across unit vectors ; half-len/half-wid
+  function obox(cx,cy,zb,zt,al,ac,hl,hw,color){const c=(s,t,z)=>project(cx+al[0]*s+ac[0]*t,cy+al[1]*s+ac[1]*t,z);
+    const b00=c(-hl,-hw,zb),b10=c(hl,-hw,zb),b11=c(hl,hw,zb),b01=c(-hl,hw,zb),t00=c(-hl,-hw,zt),t10=c(hl,-hw,zt),t11=c(hl,hw,zt),t01=c(-hl,hw,zt);
+    const along=depth(cx+al[0]*hl,cy+al[1]*hl)>depth(cx-al[0]*hl,cy-al[1]*hl), across=depth(cx+ac[0]*hw,cy+ac[1]*hw)>depth(cx-ac[0]*hw,cy-ac[1]*hw);
+    quad(along?[b10,b11,t11,t10]:[b00,b01,t01,t00],shade(color,.80));quad(across?[b01,b11,t11,t01]:[b00,b10,t10,t00],shade(color,.64));quad([t00,t10,t11,t01],shade(color,1));}
+
+  // ---- shared IDBM bed helper (metres) — every vehicle bed should use this for visual consistency ----
+  function idbm(cx,cy,cz,len,yaw,lod){const al=[Math.cos(yaw),Math.sin(yaw)],ac=[-al[1],al[0]],hL=len/2,EL=.32,EHW=.15,BHW=.14,ET=.20,DT=.08,BB=.115,TF=.04;
+    if(lod==='simple'){obox(cx,cy,cz,cz+ET,al,ac,hL,EHW,0x6f7884);return;}
+    const eOff=hL-EL/2,bHL=Math.max(0,hL-EL),ctr=o=>[cx+al[0]*o,cy+al[1]*o];
+    const end=o=>{const c=ctr(o);if(lod==='full'){obox(c[0],c[1],cz,cz+DT,al,ac,EL/2,EHW,0x2e333a);obox(c[0],c[1],cz+DT,cz+ET,al,ac,EL/2,EHW,0xe9ecef);}else obox(c[0],c[1],cz,cz+ET,al,ac,EL/2,EHW,0xe0e4e9);};
+    const body=()=>{if(bHL>0)obox(cx,cy,cz+BB,cz+ET,al,ac,bHL,BHW,0x33383f);};
+    [{d:depth(ctr(-eOff)[0],ctr(-eOff)[1]),f:()=>end(-eOff)},{d:depth(cx,cy),f:body},{d:depth(ctr(eOff)[0],ctr(eOff)[1]),f:()=>end(eOff)}].sort((a,b)=>a.d-b.d).forEach(p=>p.f());
+    const a0=-(hL-TF),a1=hL-TF,zt=cz+ET+.001,c=(s,t)=>project(cx+al[0]*s+ac[0]*t,cy+al[1]*s+ac[1]*t,zt);
+    quad([c(a0,-BHW),c(a1,-BHW),c(a1,BHW),c(a0,BHW)],shade(0x434b56,1));}
+
+  const api={project,depth,obox,quad,shade,M,idbm,get ctx(){return ctx;},cam};
+
+  function bboxAll(){let mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];scene.forEach(i=>{const b=registry[i.type].bbox(i);for(let k=0;k<3;k++){mn[k]=Math.min(mn[k],b.min[k]);mx[k]=Math.max(mx[k],b.max[k]);}});return{mn,mx};}
+  function fit(){const {mn,mx}=bboxAll();CX=(mn[0]+mx[0])/2;CY=(mn[1]+mx[1])/2;CZ=(mn[2]+mx[2])/2;
+    const ca=Math.cos(cam.az),sa=Math.sin(cam.az),se=Math.sin(cam.el),ce=Math.cos(cam.el);let X0=1e9,X1=-1e9,Y0=1e9,Y1=-1e9;
+    for(const x of[mn[0],mx[0]])for(const y of[mn[1],mx[1]])for(const z of[mn[2],mx[2]]){const dx=x-CX,dy=CY-y,dz=z-CZ,rx=(dx*ca-dy*sa)*cam.S,sy=((dx*sa+dy*ca)*se-dz*ce)*cam.S;X0=Math.min(X0,rx);X1=Math.max(X1,rx);Y0=Math.min(Y0,sy);Y1=Math.max(Y1,sy);}
+    cam.zoom=0.80*Math.min(CW/((X1-X0)||1),CH/((Y1-Y0)||1));cam.panX=cam.panY=0;}
+  function render(){ctx.clearRect(0,0,CW,CH);
+    // ground grid
+    ctx.strokeStyle='rgba(120,140,165,0.22)';ctx.lineWidth=1;ctx.beginPath();const r=10;
+    for(let x=Math.floor(CX-r);x<=CX+r;x++){const a=project(x,CY-r,0),b=project(x,CY+r,0);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}
+    for(let y=Math.floor(CY-r);y<=CY+r;y++){const a=project(CX-r,y,0),b=project(CX+r,y,0);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}
+    ctx.stroke();
+    const lod=window.__forceLOD||(dragging?'simple':(scene.length>200?'med':'full'));   // [showcase] honor forced LOD
+    const order=scene.map((i,k)=>{const b=registry[i.type].bbox(i),mid=[(b.min[0]+b.max[0])/2,(b.min[1]+b.max[1])/2];return[depth(mid[0],mid[1]),k];}).sort((a,b)=>a[0]-b[0]);
+    order.forEach(o=>{const i=scene[o[1]];registry[i.type].draw3D(api,i,lod);});}
+  // controls
+  let drag=null;
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+  cv.addEventListener('pointerdown',e=>{try{cv.setPointerCapture(e.pointerId);}catch(_){}drag={x:e.clientX,y:e.clientY,btn:e.button};dragging=true;});
+  cv.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;
+    if(drag.btn===2||e.shiftKey){cam.panX+=dx;cam.panY+=dy;}else{cam.az-=dx*.01;cam.el=Math.max(.08,Math.min(1.45,cam.el-dy*.005));}render();});
+  cv.addEventListener('pointerup',()=>{drag=null;dragging=false;render();});
+  cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,wx=(mx-ORX-cam.panX)/(cam.S*cam.zoom),wy=(my-ORY-cam.panY)/(cam.S*cam.zoom);
+    cam.zoom=Math.max(.05,Math.min(60,cam.zoom*(e.deltaY<0?1.1:.9)));cam.panX=mx-ORX-wx*cam.S*cam.zoom;cam.panY=my-ORY-wy*cam.S*cam.zoom;
+    dragging=true;render();clearTimeout(zT);zT=setTimeout(()=>{dragging=false;render();},90);},{passive:false});
+  return { api, registerType:(id,mod)=>registry[id]=mod, setScene:s=>{scene=s;fit();render();}, render };   // [showcase] expose render
+})();
+/* ===================== END SHARED HARNESS ============================= */
+</script>
+
+<script>
+/* rack.js — contract object (TZ_RACK); INLINED verbatim, canonical copy is rack.js */
+/* ======================================================================
+   Tetrisize Platform — Rack (fixed IDBM storage structure)
+   Contract object: window.TZ_RACK   (read components/COMPONENT_AUTHORING_BRIEF.md)
+
+   The fixed multi-level array of IDBM lanes that the Crane/Shuttle/AGV deliver to.
+   Uprights + beams form bays × levels; each level holds a row of IDBM lanes.
+   Units: schema in mm, renderer in metres (api.M = 0.001). Z-up, right-handed.
+   Local +X = run of bays (along the aisle) ; local +Y = lane depth (IDBM length) ;
+   +Z = up. Datum = pose at the rack's near-bottom-centre.
+
+   PROPOSED category "racking" (composite of schema §2 racking_upright + racking_beam) —
+   the main session merges. Lanes reuse the EXISTING IDBM (shared api.idbm).
+   ⚠ Dimensions are placeholder ASSUMPTIONS — see rack/spec.md.
+   ====================================================================== */
+(function () {
+  "use strict";
+  var IDW = 300, IDBM_H = 0.200;
+
+  var DEFAULTS = {
+    "rack.bays": 3,            // bays along X
+    "rack.lanesPerBay": 4,     // IDBM lanes per bay → total lanes = bays * lanesPerBay
+    "rack.levels": 4,          // storage levels (Z)
+    "rack.levelPitch": 2000,   // vertical pitch between levels
+    "bed.idbmLength": 2500,    // lane depth (local Y) = IDBM length
+    "upright.section": 100,    // square upright post section
+    "beam.section": 100,       // beam section
+    "base.height": 150         // first level (lowest beam) height above floor
+  };
+  function num(inst, k) { var v = inst && inst.params ? inst.params[k] : undefined; return (v == null) ? DEFAULTS[k] : v; }
+  function dims(inst) {
+    var bays = num(inst, "rack.bays"), lpb = num(inst, "rack.lanesPerBay"), levels = num(inst, "rack.levels");
+    var pitch = num(inst, "rack.levelPitch"), L = num(inst, "bed.idbmLength"), base = num(inst, "base.height");
+    var lanes = bays * lpb, spanX = lanes * IDW, bayW = lpb * IDW, depthY = L;
+    var topZ = base + levels * pitch;
+    return { bays: bays, lpb: lpb, levels: levels, pitch: pitch, L: L, base: base, lanes: lanes, spanX: spanX, bayW: bayW, depthY: depthY, topZ: topZ };
+  }
+
+  var RACK_BLUE = 0x415a77;   // muted blue-grey for the fixed steel (distinct from the crane's orange)
+
+  var SCHEMA_TYPE = {
+    typeId: "rack", name: "Rack (IDBM storage)", category: "racking",
+    status: "DRAFT — PROPOSED composite category 'racking' (= schema §2 racking_upright + racking_beam). Placeholder dims; confirm with Mike.",
+    params: [
+      { key: "rack.bays",       type: "number", default: 3, min: 1, units: "count", desc: "Bays along X (the aisle run)." },
+      { key: "rack.lanesPerBay",type: "number", default: 4, min: 1, units: "count", desc: "IDBM lanes per bay; total lanes = bays x lanesPerBay." },
+      { key: "rack.levels",     type: "number", default: 4, min: 1, units: "count", desc: "Storage levels (Z)." },
+      { key: "rack.levelPitch", type: "number", default: 2000, units: "mm", desc: "Vertical pitch between levels." },
+      { key: "bed.idbmLength",  type: "number", default: 2500, units: "mm", desc: "Lane depth (local Y) = IDBM length." },
+      { key: "upright.section", type: "number", default: 100, units: "mm", assumption: true, desc: "Square upright post section." },
+      { key: "beam.section",    type: "number", default: 100, units: "mm", assumption: true, desc: "Beam section." },
+      { key: "base.height",     type: "number", default: 150, units: "mm", assumption: true, desc: "Lowest beam (level 0) height above floor." }
+    ],
+    kinematics: { drivableAxes: "none", note: "Fixed structure (no motion)." },
+    derived: {
+      "lanes.total": "rack.bays x rack.lanesPerBay",
+      "rack.width":  "lanes.total x 300 (X)",
+      "bay.width":   "rack.lanesPerBay x 300",
+      "rack.depth":  "bed.idbmLength (Y)",
+      "rack.height": "base.height + rack.levels x rack.levelPitch (Z)"
+    },
+    geometry: {
+      note: "Canonical parametric form (mm). Mirrors the IDBM geometry-block pattern (schema §2).",
+      frame: "Datum = pose {position,yaw} at near-bottom-centre. local X = bays/aisle run; local Y = lane depth; Z up.",
+      uprights: "(bays+1) upright frames at local x = -width/2 + i*bayWidth; each = 2 posts (front -Y, back +Y) of upright.section, floor to rack.height.",
+      beams: "front & back beams along X at each level z = base.height + k*levelPitch (k=0..levels-1).",
+      lanes: "each level carries lanes.total IDBMs at 300 mm pitch along X, each idbmLength deep along Y, resting on the beams. Reuses the shared IDBM drawer.",
+      rule: "IDBM module is FIXED (width 300, height 200). Bays, lanes, levels, pitch and depth all scale from the params."
+    },
+    connectionPoints: [
+      { id: "face_pick", face: "sideL", offset: [0, -1, 0], kind: "transfer", desc: "-Y rack face: lane ends a Crane/Shuttle/AGV transfers to (per level)." }
+    ],
+    datum: { kind: "pose", form: "{ position:[x,y,z] mm, yaw rad }" },
+    meta: { author: "component-authoring session (parallel)", form: "selective rack: uprights + beams + IDBM lanes",
+      colours: "Uprights + beams = muted blue-grey (0x415a77); IDBMs unchanged.",
+      references: ["coordinate_frame_and_component_schema_v0.1.md §2 (racking_upright, racking_beam)", "viewer_3d.html drawIdbm()"],
+      remainingAssumptions: "section sizes, base.height, whether lanes are full-depth or paired, colour. Appearance to be revisited." }
+  };
+
+  window.TZ_RACK = {
+    typeId: "rack", category: "racking", schemaType: SCHEMA_TYPE, defaults: DEFAULTS,
+
+    draw3D: function (api, inst, lod) {
+      var M = api.M, pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0;
+      var cx = pos[0] * M, cy = pos[1] * M, cz = pos[2] * M, al = [Math.cos(yaw), Math.sin(yaw)], ac = [-al[1], al[0]];
+      var d = dims(inst), spanX = d.spanX * M, bayW = d.bayW * M, depthY = d.depthY * M;
+      var up = num(inst, "upright.section") * M, bm = num(inst, "beam.section") * M;
+      var base = d.base * M, pitch = d.pitch * M, topZ = cz + d.topZ * M, idw = IDW * M;
+      var parts = []; function add(x, y, z, f) { parts.push({ k: api.depth(x, y) + z * 0.01, f: f }); }
+
+      // upright frames (front -Y / back +Y) at each bay boundary
+      for (var i = 0; i <= d.bays; i++) {
+        var ox = -spanX / 2 + i * bayW;
+        [-1, 1].forEach(function (sy) {
+          var px = cx + al[0] * ox + ac[0] * (sy * depthY / 2), py = cy + al[1] * ox + ac[1] * (sy * depthY / 2);
+          add(px, py, cz + (topZ - cz) / 2, function () { api.obox(px, py, cz, topZ, al, ac, up / 2, up / 2, RACK_BLUE); });
+        });
+      }
+      // beams along X (front & back) at each level
+      for (var k = 0; k < d.levels; k++) {
+        var bz = cz + base + k * pitch;
+        [-1, 1].forEach(function (sy) {
+          var by = cy + ac[1] * (sy * depthY / 2), bx = cx + ac[0] * (sy * depthY / 2);
+          (function (z, X, Y) { add(X, Y, z + bm / 2, function () { api.obox(X, Y, z, z + bm, al, ac, spanX / 2 + up / 2, bm / 2, RACK_BLUE); }); })(bz, bx, by);
+        });
+      }
+      // IDBM lanes resting on the beams at each level
+      for (var k2 = 0; k2 < d.levels; k2++) {
+        var lz = cz + base + k2 * pitch + bm;
+        for (var lane = 0; lane < d.lanes; lane++) {
+          var lx = (lane - (d.lanes - 1) / 2) * idw, gx = cx + al[0] * lx, gy = cy + al[1] * lx;
+          (function (x, y, z) { add(x, y, z + IDBM_H / 2, function () { api.idbm(x, y, z, depthY, yaw + Math.PI / 2, lod); }); })(gx, gy, lz);
+        }
+      }
+      parts.sort(function (a, b) { return a.k - b.k; }).forEach(function (p) { p.f(); });
+    },
+
+    footprint2D: function (inst) {
+      var pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0, al = [Math.cos(yaw), Math.sin(yaw)], ac = [-al[1], al[0]], d = dims(inst);
+      var up = num(inst, "upright.section");
+      var hX = d.spanX / 2 + up, hY = d.depthY / 2 + up;
+      return [[-hX, -hY], [hX, -hY], [hX, hY], [-hX, hY]].map(function (c) { return [pos[0] + al[0] * c[0] + ac[0] * c[1], pos[1] + al[1] * c[0] + ac[1] * c[1]]; });
+    },
+
+    bbox: function (inst) {
+      var M = 0.001, pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0, cx = pos[0] * M, cy = pos[1] * M, cz = pos[2] * M, d = dims(inst);
+      var up = num(inst, "upright.section") * M, hX = (d.spanX / 2) * M + up, hY = (d.depthY / 2) * M + up;
+      var ca = Math.abs(Math.cos(yaw)), sa = Math.abs(Math.sin(yaw)), ex = ca * hX + sa * hY, ey = sa * hX + ca * hY;
+      return { min: [cx - ex, cy - ey, cz], max: [cx + ex, cy + ey, cz + d.topZ * M] };
+    }
+  };
+})();
+</script>
+
+<script>
+/* =================== STANDALONE SHOWCASE (rack.html only) ============= */
+const C = window.TZ_RACK;
+TZ.registerType('rack', C);
+
+const SCENE = [ { type:'rack', pose:{position:[0,0,0],yaw:0}, params:Object.assign({}, C.defaults) } ];
+TZ.setScene(SCENE);
+requestAnimationFrame(()=>TZ.setScene(SCENE));
+addEventListener('load', ()=>TZ.setScene(SCENE));
+
+const main = SCENE[0];
+function updateInfo(){ const p=main.params, lanes=p['rack.bays']*p['rack.lanesPerBay'];
+  document.getElementById('infoBody').innerHTML =
+    `<div class="irow"><span>Bays × lanes/bay</span><b>${p['rack.bays']} × ${p['rack.lanesPerBay']}</b></div>`+
+    `<div class="irow"><span>Total lanes</span><b>${lanes}</b></div>`+
+    `<div class="irow"><span>Levels @ pitch</span><b>${p['rack.levels']} @ ${p['rack.levelPitch']}</b></div>`+
+    `<div class="irow"><span>Width × depth</span><b>${lanes*300} × ${p['bed.idbmLength']}</b></div>`+
+    `<div class="irow"><span>Height</span><b>${p['base.height']+p['rack.levels']*p['rack.levelPitch']} mm</b></div>`; }
+updateInfo();
+
+const lodBtns={ lodAuto:null, lodFull:'full', lodMed:'med', lodSimple:'simple' };
+function setLOD(v,id){ window.__forceLOD=v; TZ.render(); Object.keys(lodBtns).forEach(k=>document.getElementById(k).classList.toggle('on',k===id)); }
+document.getElementById('lodAuto').onclick=()=>setLOD(null,'lodAuto');
+document.getElementById('lodFull').onclick=()=>setLOD('full','lodFull');
+document.getElementById('lodMed').onclick=()=>setLOD('med','lodMed');
+document.getElementById('lodSimple').onclick=()=>setLOD('simple','lodSimple');
+setLOD(null,'lodAuto');
+
+document.getElementById('reset').onclick=()=>{ window.__forceLOD=null;
+  Object.keys(lodBtns).forEach(k=>document.getElementById(k).classList.toggle('on',k==='lodAuto'));
+  TZ.api.cam.az=0.86; TZ.api.cam.el=0.62; TZ.setScene(SCENE); updateInfo(); };
+</script>
+</body>
+</html>

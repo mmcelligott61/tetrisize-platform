@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tetrisize — AGV</title>
+<!-- agv.html — standalone artifact. Contract is INLINED verbatim from agv.js (the
+     canonical file the main session integrates) so it renders even when a preview can't fetch
+     siblings. Conventions: schema in mm, renderer in metres (M=0.001), Z-up, right-handed. -->
+<style>
+  :root{--bg1:#eef2f7;--bg2:#dbe4f0;--ink:#1f2a37;--muted:#5b6b7c;--panel:rgba(255,255,255,0.9);--brd:rgba(20,40,70,0.12);--accent:#2b6cff;--shadow:0 8px 30px rgba(20,40,70,0.12)}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink)}
+  #app{position:fixed;inset:0;background:radial-gradient(130% 130% at 50% 0%,var(--bg1),var(--bg2))}
+  #scene{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}#scene:active{cursor:grabbing}
+  .panel{position:absolute;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--brd);border-radius:13px;box-shadow:var(--shadow);padding:13px 15px;user-select:none}
+  #title{top:16px;left:16px;max-width:330px}#title h1{margin:0;font-size:16px}#title h1 b{color:var(--accent)}
+  #title p{margin:4px 0 0;font-size:11.5px;color:var(--muted);line-height:1.45}
+  #title .warn{margin-top:6px;font-size:11px;font-weight:600;color:#b25400}
+  #info{top:16px;right:16px;width:230px}
+  #info .lbl{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .irow{display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px solid rgba(20,40,70,.07)}
+  .irow:first-of-type{border-top:none}.irow span:first-child{color:var(--muted)}.irow b{font-variant-numeric:tabular-nums}
+  #ctl{bottom:16px;left:16px;display:flex;gap:7px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 32px)}
+  #ctl .grp{display:flex;gap:5px;align-items:center;padding-right:7px;border-right:1px solid var(--brd)}
+  #ctl .grp:last-child{border-right:none}
+  button.ui{cursor:pointer;border:1px solid var(--brd);background:#fff;color:var(--ink);font-size:12px;font-weight:600;padding:7px 10px;border-radius:9px}
+  button.ui:hover{border-color:var(--accent);color:var(--accent)}
+  button.ui.on{border-color:var(--accent);color:#fff;background:var(--accent)}
+  #hint{bottom:16px;left:50%;transform:translateX(-50%);font-size:11.5px;color:var(--muted);border-radius:999px;padding:7px 14px}#hint b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="scene"></canvas>
+  <div class="panel" id="title"><h1>TETRISIZE <b>AGV</b></h1>
+    <p>Free-roaming: low IDBM bed between two tall end <b>trunks</b> (batteries/motors/controls/drive + centre Lidar each end); drives X,Y in agv_drivable zones; widest part = the IDBM ends. Try <b>Animate path</b>. Drag orbit · scroll zoom · right-drag pan.</p>
+    <p class="warn">Build 2026-06-06: far-end Lidar now hidden behind its trunk (only the near one shows). IDBMs nest low → IDBM-top = deck + 85 (210 mm min).</p></div>
+  <div class="panel" id="info"><div class="lbl">AGV (roaming) — mm</div><div id="infoBody"></div></div>
+  <div class="panel" id="ctl"><div class="grp"><button class="ui" id="reset">Reset view</button></div><div class="grp"><button class="ui" id="animPath">Animate path</button></div><div class="grp"><button class="ui" id="lodAuto">Auto LOD</button><button class="ui" id="lodFull">Full</button><button class="ui" id="lodMed">Med</button><button class="ui" id="lodSimple">Simple</button></div></div>
+  <div class="panel" id="hint"><b>Drag</b> orbit · <b>Scroll</b> zoom · <b>Right-drag</b> pan</div>
+</div>
+
+<script>
+/* =================== SHARED HARNESS (from _TEMPLATE_component.html) ====================== *//* Verbatim except two lines marked  // [showcase]  — they do not affect crane.js.          */
+const TZ = (function(){
+  const cv=document.getElementById('scene'),ctx=cv.getContext('2d'),M=0.001;
+  let CW=0,CH=0,ORX=0,ORY=0,DPR=Math.min(window.devicePixelRatio||1,2);
+  const cam={az:0.86,el:0.62,S:30,zoom:1,panX:0,panY:0};
+  let CX=0,CY=0,CZ=0, scene=[], registry={}, dragging=false,zT;
+  function resize(){CW=cv.clientWidth;CH=cv.clientHeight;cv.width=CW*DPR;cv.height=CH*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);ORX=CW*.5;ORY=CH*.5;}
+  addEventListener('resize',()=>{resize();render();});resize();
+  function project(x,y,z){const dx=x-CX,dy=CY-y,dz=z-CZ,ca=Math.cos(cam.az),sa=Math.sin(cam.az);   // metres, Z-up, +Y up
+    const rx=dx*ca-dy*sa,G=dx*sa+dy*ca,sy=G*Math.sin(cam.el)-dz*Math.cos(cam.el);
+    return [ORX+rx*cam.S*cam.zoom+cam.panX,ORY+sy*cam.S*cam.zoom+cam.panY];}
+  function depth(x,y){const dx=x-CX,dy=CY-y;return dx*Math.sin(cam.az)+dy*Math.cos(cam.az);}
+  const shade=(hex,f)=>{const r=(hex>>16)&255,g=(hex>>8)&255,b=hex&255,m=v=>Math.max(0,Math.min(255,v*f|0));return `rgb(${m(r)},${m(g)},${m(b)})`;};
+  function quad(p,fill){ctx.beginPath();ctx.moveTo(p[0][0],p[0][1]);for(let i=1;i<4;i++)ctx.lineTo(p[i][0],p[i][1]);ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle='rgba(22,32,48,0.14)';ctx.lineWidth=1;ctx.stroke();}
+  // oriented box (metres): centre cx,cy ; zb..zt ; along/across unit vectors ; half-len/half-wid
+  function obox(cx,cy,zb,zt,al,ac,hl,hw,color){const c=(s,t,z)=>project(cx+al[0]*s+ac[0]*t,cy+al[1]*s+ac[1]*t,z);
+    const b00=c(-hl,-hw,zb),b10=c(hl,-hw,zb),b11=c(hl,hw,zb),b01=c(-hl,hw,zb),t00=c(-hl,-hw,zt),t10=c(hl,-hw,zt),t11=c(hl,hw,zt),t01=c(-hl,hw,zt);
+    const along=depth(cx+al[0]*hl,cy+al[1]*hl)>depth(cx-al[0]*hl,cy-al[1]*hl), across=depth(cx+ac[0]*hw,cy+ac[1]*hw)>depth(cx-ac[0]*hw,cy-ac[1]*hw);
+    quad(along?[b10,b11,t11,t10]:[b00,b01,t01,t00],shade(color,.80));quad(across?[b01,b11,t11,t01]:[b00,b10,t10,t00],shade(color,.64));quad([t00,t10,t11,t01],shade(color,1));}
+
+  // ---- shared IDBM bed helper (metres) — every vehicle bed should use this for visual consistency ----
+  function idbm(cx,cy,cz,len,yaw,lod){const al=[Math.cos(yaw),Math.sin(yaw)],ac=[-al[1],al[0]],hL=len/2,EL=.32,EHW=.15,BHW=.14,ET=.20,DT=.08,BB=.115,TF=.04;
+    if(lod==='simple'){obox(cx,cy,cz,cz+ET,al,ac,hL,EHW,0x6f7884);return;}
+    const eOff=hL-EL/2,bHL=Math.max(0,hL-EL),ctr=o=>[cx+al[0]*o,cy+al[1]*o];
+    const end=o=>{const c=ctr(o);if(lod==='full'){obox(c[0],c[1],cz,cz+DT,al,ac,EL/2,EHW,0x2e333a);obox(c[0],c[1],cz+DT,cz+ET,al,ac,EL/2,EHW,0xe9ecef);}else obox(c[0],c[1],cz,cz+ET,al,ac,EL/2,EHW,0xe0e4e9);};
+    const body=()=>{if(bHL>0)obox(cx,cy,cz+BB,cz+ET,al,ac,bHL,BHW,0x33383f);};
+    [{d:depth(ctr(-eOff)[0],ctr(-eOff)[1]),f:()=>end(-eOff)},{d:depth(cx,cy),f:body},{d:depth(ctr(eOff)[0],ctr(eOff)[1]),f:()=>end(eOff)}].sort((a,b)=>a.d-b.d).forEach(p=>p.f());
+    const a0=-(hL-TF),a1=hL-TF,zt=cz+ET+.001,c=(s,t)=>project(cx+al[0]*s+ac[0]*t,cy+al[1]*s+ac[1]*t,zt);
+    quad([c(a0,-BHW),c(a1,-BHW),c(a1,BHW),c(a0,BHW)],shade(0x434b56,1));}
+
+  const api={project,depth,obox,quad,shade,M,idbm,get ctx(){return ctx;},cam};
+
+  function bboxAll(){let mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];scene.forEach(i=>{const b=registry[i.type].bbox(i);for(let k=0;k<3;k++){mn[k]=Math.min(mn[k],b.min[k]);mx[k]=Math.max(mx[k],b.max[k]);}});return{mn,mx};}
+  function fit(){const {mn,mx}=bboxAll();CX=(mn[0]+mx[0])/2;CY=(mn[1]+mx[1])/2;CZ=(mn[2]+mx[2])/2;
+    const ca=Math.cos(cam.az),sa=Math.sin(cam.az),se=Math.sin(cam.el),ce=Math.cos(cam.el);let X0=1e9,X1=-1e9,Y0=1e9,Y1=-1e9;
+    for(const x of[mn[0],mx[0]])for(const y of[mn[1],mx[1]])for(const z of[mn[2],mx[2]]){const dx=x-CX,dy=CY-y,dz=z-CZ,rx=(dx*ca-dy*sa)*cam.S,sy=((dx*sa+dy*ca)*se-dz*ce)*cam.S;X0=Math.min(X0,rx);X1=Math.max(X1,rx);Y0=Math.min(Y0,sy);Y1=Math.max(Y1,sy);}
+    cam.zoom=0.80*Math.min(CW/((X1-X0)||1),CH/((Y1-Y0)||1));cam.panX=cam.panY=0;}
+  function render(){ctx.clearRect(0,0,CW,CH);
+    // ground grid
+    ctx.strokeStyle='rgba(120,140,165,0.22)';ctx.lineWidth=1;ctx.beginPath();const r=10;
+    for(let x=Math.floor(CX-r);x<=CX+r;x++){const a=project(x,CY-r,0),b=project(x,CY+r,0);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}
+    for(let y=Math.floor(CY-r);y<=CY+r;y++){const a=project(CX-r,y,0),b=project(CX+r,y,0);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}
+    ctx.stroke();
+    const lod=window.__forceLOD||(dragging?'simple':(scene.length>200?'med':'full'));   // [showcase] honor forced LOD
+    const order=scene.map((i,k)=>{const b=registry[i.type].bbox(i),mid=[(b.min[0]+b.max[0])/2,(b.min[1]+b.max[1])/2];return[depth(mid[0],mid[1]),k];}).sort((a,b)=>a[0]-b[0]);
+    order.forEach(o=>{const i=scene[o[1]];registry[i.type].draw3D(api,i,lod);});}
+  // controls
+  let drag=null;
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+  cv.addEventListener('pointerdown',e=>{try{cv.setPointerCapture(e.pointerId);}catch(_){}drag={x:e.clientX,y:e.clientY,btn:e.button};dragging=true;});
+  cv.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;
+    if(drag.btn===2||e.shiftKey){cam.panX+=dx;cam.panY+=dy;}else{cam.az-=dx*.01;cam.el=Math.max(.08,Math.min(1.45,cam.el-dy*.005));}render();});
+  cv.addEventListener('pointerup',()=>{drag=null;dragging=false;render();});
+  cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,wx=(mx-ORX-cam.panX)/(cam.S*cam.zoom),wy=(my-ORY-cam.panY)/(cam.S*cam.zoom);
+    cam.zoom=Math.max(.05,Math.min(60,cam.zoom*(e.deltaY<0?1.1:.9)));cam.panX=mx-ORX-wx*cam.S*cam.zoom;cam.panY=my-ORY-wy*cam.S*cam.zoom;
+    dragging=true;render();clearTimeout(zT);zT=setTimeout(()=>{dragging=false;render();},90);},{passive:false});
+  return { api, registerType:(id,mod)=>registry[id]=mod, setScene:s=>{scene=s;fit();render();}, render };   // [showcase] expose render
+})();
+/* ===================== END SHARED HARNESS ============================= */
+</script>
+
+<script>
+/* agv.js — contract object (TZ_AGV); INLINED verbatim, canonical copy is agv.js */
+/* ======================================================================
+   Tetrisize Platform — AGV (low bed between two end "trunks", free-roaming)
+   Contract object: window.TZ_AGV   (read components/COMPONENT_AUTHORING_BRIEF.md)
+
+   FORM (per Mike 2026-06-05): a low nested IDBM bed between TWO tall (~1000 mm) "trunk"
+   end-structures — one at each X end, set back from the outer lane by trunk.gap (clearance for
+   products entering/exiting) — housing batteries, motors, controls and drive, each with a centre
+   Lidar on its outer face (both ends; runs both ways). The AGV may be LONGER in X than the outer
+   IDBMs, but NOTHING is wider (in Y) than the IDBM ends. Free-roaming X,Y in agv_drivable zones.
+
+   IDBMs NEST LOW: long body rests on the deck → IDBM-top = chassis.height + 85 (min 210 at 125).
+   Draw order is FAR-trunk -> bed -> NEAR-trunk (recomputed per view) so no dark structure ever
+   paints over the IDBMs at any iso angle.
+
+   Units: schema in mm, renderer in metres (api.M = 0.001). Z-up, right-handed.
+   Local +X = heading/forward ; local +Y = across ; +Z = up. Datum = chassis pose.
+   ⚠ Some dimensions are placeholder ASSUMPTIONS — see agv/spec.md.
+   ====================================================================== */
+(function () {
+  "use strict";
+  var IDW = 300, IDBM_H = 0.200, IDBM_BODY_BOTTOM = 0.115, IDBM_END_LEN = 320;
+  var BODY = 0x2b2f36, ORANGE = 0xf26522, LIDAR = 0x586173, LIDAR_WIN = 0x57c7c7, CASTER = 0x1c2024;
+
+  var DEFAULTS = {
+    "bed.laneCount": 4,         // IDBMs side-by-side across the bed (X)
+    "bed.idbmLength": 2500,     // IDBM length = bed depth (local Y); variable
+    "chassis.height": 320,      // deck (IDBM body-rest) height; IDBM-top = chassis.height + 85 (min 125 -> 210)
+    "trunk.height": 1000,       // tall end-structure height (batteries/motors/controls/drive)
+    "trunk.depth": 600,         // how far each trunk extends in X
+    "trunk.gap": 150,           // clearance gap between the last IDBM and the trunk (product entry/exit)
+    "trunk.widthInset": 200,    // trunk Y-width = idbmLength - this (slightly SHORTER than the IDBM ends)
+    "clearance.berth": 600      // WIDER Configurator pathway berth (free-roaming); NOT drawn in the Viewer
+  };
+  function num(inst, k) { var v = inst && inst.params ? inst.params[k] : undefined; return (v == null) ? DEFAULTS[k] : v; }
+  function dims(inst) {
+    var N = num(inst, "bed.laneCount"), L = num(inst, "bed.idbmLength"), chH = num(inst, "chassis.height");
+    var trunkH = num(inst, "trunk.height"), trunkDepth = num(inst, "trunk.depth"), gap = num(inst, "trunk.gap"), trunkWInset = num(inst, "trunk.widthInset");
+    var spanX = N * IDW, depthY = L;
+    var deckDepthY = Math.max(L - 2 * IDBM_END_LEN, 400), trunkY = Math.max(L - trunkWInset, 400);
+    var trunkInnerX = spanX / 2 + gap, trunkCtrX = trunkInnerX + trunkDepth / 2, outerX = trunkInnerX + trunkDepth, deckHalfX = trunkInnerX;
+    var footX = 2 * outerX, footY = L + 100;
+    return { N: N, L: L, chH: chH, trunkH: trunkH, trunkDepth: trunkDepth, gap: gap, spanX: spanX, depthY: depthY, deckDepthY: deckDepthY, trunkY: trunkY, trunkInnerX: trunkInnerX, trunkCtrX: trunkCtrX, outerX: outerX, deckHalfX: deckHalfX, footX: footX, footY: footY };
+  }
+
+  var SCHEMA_TYPE = {
+    typeId: "agv", name: "AGV (low bed + end trunks)", category: "vehicle", class: "agv",
+    status: "Form per Mike 2026-06-05: low nested IDBM bed between two tall end trunks (set back by trunk.gap) + centre Lidar both ends; widest part = the IDBM ends. Free-roaming. Cosmetic dims assumed.",
+    params: [
+      { key: "bed.laneCount",    type: "number", default: 4, min: 1, units: "count", desc: "IDBMs side-by-side across the bed (X)." },
+      { key: "bed.idbmLength",   type: "number", default: 2500, units: "mm", desc: "IDBM length = bed depth (local Y); the IDBM ends are the widest part." },
+      { key: "chassis.height",   type: "number", default: 320, min: 125, units: "mm", desc: "Deck (IDBM body-rest) height. IDBM nests low so IDBM-top = chassis.height + 85; min 125 -> 210 mm." },
+      { key: "trunk.height",     type: "number", default: 1000, units: "mm", assumption: true, desc: "Tall end-structure height (batteries/motors/controls/drive)." },
+      { key: "trunk.depth",      type: "number", default: 600, units: "mm", assumption: true, desc: "How far each trunk extends in X." },
+      { key: "trunk.gap",        type: "number", default: 150, units: "mm", assumption: true, desc: "Clearance gap between the last IDBM and the trunk (so the trunk doesn't interfere with products entering/exiting)." },
+      { key: "trunk.widthInset", type: "number", default: 200, units: "mm", assumption: true, desc: "Trunk Y-width = idbmLength - this (slightly SHORTER than the IDBM ends)." },
+      { key: "clearance.berth",  type: "number", default: 600, units: "mm", assumption: true, desc: "WIDER pathway clearance berth (free-roaming) for the Configurator; NOT drawn in the Viewer." }
+    ],
+    bed: { laneCount: 4, idbmLength: 2500, idbmWidth: 300, idbmType: "idbm", mount: "nested low between end trunks", note: "bed = laneCount IDBM instances; obey normal IDBM op rules." },
+    kinematics: { drivableAxes: "X,Y", note: "Free-roaming on the floor; confined to agv_drivable zones (schema §2 Zone). Symmetric (a trunk + Lidar at each end) — runs both ways; heading = yaw (+X local)." },
+    derived: {
+      "idbm.top": "chassis.height + 85 (min 210 mm at chassis.height 125)",
+      "vehicle.length(X)": "laneCount x 300 + 2 x (trunk.gap + trunk.depth)",
+      "vehicle.width(Y)": "idbmLength (IDBM ends; trunks are idbmLength - trunk.widthInset)",
+      "vehicle.height(Z)": "max(trunk.height, chassis.height + 85)",
+      "pathway": "Configurator-only: a WIDER corridor = footprint +/- clearance.berth (and swept along heading); the AGV stays within agv_drivable zones. NOT rendered in the Viewer."
+    },
+    geometry: {
+      note: "Low nested IDBM bed between two tall end trunks; free-roaming. Drawn far-trunk -> bed -> near-trunk so nothing dark overpaints the IDBMs.",
+      frame: "Datum = chassis pose {position,yaw}. local X = heading/forward; local Y = across; Z up.",
+      deck: "Low slab from trunk to trunk (X = laneCount x 300 + 2 x trunk.gap ; Y = IDBM body length) at chassis.height; IDBM bodies rest on it, end housings overhang in Y.",
+      trunks: "two boxes set back by trunk.gap: inner face at laneCount x 300/2 + trunk.gap; each trunk.depth (X) x (idbmLength - trunk.widthInset) (Y) x trunk.height tall; corner casters at the trunk bases.",
+      lidar: "a sensor on the OUTER (+/-X) face centre of each trunk (both ends).",
+      bed: "laneCount IDBMs at 300 mm pitch along X; each idbmLength along Y; nested low (IDBM-top = chassis.height + 85).",
+      rule: "Widest part (Y) = the IDBM ends. The AGV may be longer in X than the outer IDBMs. IDBM module FIXED (300 wide, 200 high, body underside 115)."
+    },
+    connectionPoints: [
+      { id: "bed_infeed",  face: "endA", offset: [0, -1, 0], kind: "end_to_end", desc: "-Y bed edge: lane endA's meet IDBM/rack lanes." },
+      { id: "bed_outfeed", face: "endB", offset: [0, 1, 0],  kind: "end_to_end", desc: "+Y bed edge: lane endB's meet lanes." },
+      { id: "base_datum",  face: "base", offset: [0, 0, 0],  kind: "pose",        desc: "AGV datum (chassis pose); heading = +X." }
+    ],
+    datum: { kind: "pose", form: "{ position:[x,y,z] mm, yaw rad }" },
+    meta: { author: "component-authoring session (parallel)", form: "low nested IDBM bed between two tall end trunks (set back by trunk.gap) + centre Lidar each end; free-roaming",
+      colours: "Trunks/deck dark + Safety-Orange cap; Lidar grey housing + teal window; IDBMs unchanged.",
+      references: ["Mike's notes 2026-06-05 (end trunks, gap, Lidar, widest = IDBM ends)", "coordinate_frame_and_component_schema_v0.1.md §2 (vehicle/agv, Zone agv_drivable)", "viewer_3d.html drawIdbm()"],
+      remainingAssumptions: "trunk.height/depth/gap/widthInset, chassis.height, drive/sensor detail. Appearance to be revisited." }
+  };
+
+  window.TZ_AGV = {
+    typeId: "agv", category: "vehicle", schemaType: SCHEMA_TYPE, defaults: DEFAULTS,
+
+    draw3D: function (api, inst, lod) {
+      var M = api.M, pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0;
+      var cx = pos[0] * M, cy = pos[1] * M, cz = pos[2] * M, al = [Math.cos(yaw), Math.sin(yaw)], ac = [-al[1], al[0]];
+      var d = dims(inst), deckHalfX = d.deckHalfX * M, deckY = d.deckDepthY * M, idbmLen = d.depthY * M, chTopZ = cz + d.chH * M;
+      var trunkH = d.trunkH * M, trunkDepth = d.trunkDepth * M, trunkY = d.trunkY * M, trunkCtrX = d.trunkCtrX * M, outerX = d.outerX * M, idw = IDW * M, N = d.N;
+
+      function drawTrunk(s) {
+        var tx = cx + al[0] * (s * trunkCtrX), ty = cy + al[1] * (s * trunkCtrX);
+        if (lod !== "simple") {
+          [-1, 1].forEach(function (sy) {
+            var wx = tx + ac[0] * (sy * (trunkY / 2 - 0.10)), wy = ty + ac[1] * (sy * (trunkY / 2 - 0.10));
+            api.obox(wx, wy, cz, cz + 0.12, al, ac, 0.08, 0.07, CASTER);
+          });
+        }
+        // Lidar seated ON the outer face (straddles it) and ordered by projected depth vs the trunk
+        // body, so the FAR trunk's lidar is hidden behind its own body — only the NEAR one shows.
+        var hx = cx + al[0] * (s * outerX), hy = cy + al[1] * (s * outerX), lz = cz + trunkH * 0.55;
+        var lidarFront = api.depth(hx, hy) > api.depth(tx, ty);
+        function drawLidar() {
+          if (lod === "simple") return;
+          api.obox(hx, hy, lz, lz + 0.20, al, ac, 0.06, 0.09, LIDAR);
+          if (lod === "full") api.obox(hx, hy, lz + 0.06, lz + 0.15, al, ac, 0.065, 0.10, LIDAR_WIN);
+        }
+        if (!lidarFront) drawLidar();
+        api.obox(tx, ty, cz, cz + trunkH, al, ac, trunkDepth / 2, trunkY / 2, BODY);
+        if (lod === "full") api.obox(tx, ty, cz + trunkH - 0.06, cz + trunkH, al, ac, trunkDepth / 2, trunkY / 2, ORANGE);
+        if (lidarFront) drawLidar();
+      }
+      function drawBed() {
+        api.obox(cx, cy, cz, chTopZ, al, ac, deckHalfX, deckY / 2, BODY);
+        var lanes = [];
+        for (var i = 0; i < N; i++) { var off = (i - (N - 1) / 2) * idw, bx = cx + al[0] * off, by = cy + al[1] * off; lanes.push({ x: bx, y: by, d: api.depth(bx, by) }); }
+        lanes.sort(function (a, b) { return a.d - b.d; }).forEach(function (L) { api.idbm(L.x, L.y, chTopZ - IDBM_BODY_BOTTOM, idbmLen, yaw + Math.PI / 2, lod); });
+      }
+      // FAR trunk -> bed -> NEAR trunk (so no dark structure ever overpaints the IDBMs)
+      var ord = [-1, 1].map(function (s) { return { s: s, d: api.depth(cx + al[0] * (s * trunkCtrX), cy + al[1] * (s * trunkCtrX)) }; }).sort(function (a, b) { return a.d - b.d; });
+      drawTrunk(ord[0].s); drawBed(); drawTrunk(ord[1].s);
+    },
+
+    footprint2D: function (inst) {
+      var pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0, al = [Math.cos(yaw), Math.sin(yaw)], ac = [-al[1], al[0]], d = dims(inst);
+      var hX = d.footX / 2, hY = d.footY / 2;
+      return [[-hX, -hY], [hX, -hY], [hX, hY], [-hX, hY]].map(function (c) { return [pos[0] + al[0] * c[0] + ac[0] * c[1], pos[1] + al[1] * c[0] + ac[1] * c[1]]; });
+    },
+
+    /* Configurator-only pathway corridor (NOT drawn in the Viewer). Wider berth; travelExtent = heading sweep (mm). */
+    laneway2D: function (inst, travelExtent) {
+      var pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0, al = [Math.cos(yaw), Math.sin(yaw)], ac = [-al[1], al[0]], d = dims(inst);
+      var berth = num(inst, "clearance.berth"), te = (travelExtent != null ? travelExtent : 0) / 2;
+      var hX = d.footX / 2 + te + berth, hY = d.footY / 2 + berth;
+      return [[-hX, -hY], [hX, -hY], [hX, hY], [-hX, hY]].map(function (c) { return [pos[0] + al[0] * c[0] + ac[0] * c[1], pos[1] + al[1] * c[0] + ac[1] * c[1]]; });
+    },
+
+    bbox: function (inst) {
+      var M = 0.001, pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0, cx = pos[0] * M, cy = pos[1] * M, cz = pos[2] * M, d = dims(inst);
+      var hX = (d.footX / 2) * M, hY = (d.footY / 2) * M, ca = Math.abs(Math.cos(yaw)), sa = Math.abs(Math.sin(yaw)), ex = ca * hX + sa * hY, ey = sa * hX + ca * hY;
+      var zTop = Math.max(d.trunkH, d.chH + (200 - 115)) * M;
+      return { min: [cx - ex, cy - ey, cz], max: [cx + ex, cy + ey, cz + zTop] };
+    }
+  };
+})();
+</script>
+
+<script>
+/* =================== STANDALONE SHOWCASE (agv.html only) ============= */
+const C = window.TZ_AGV;
+
+/* a faint floor PATH ring (scene element) the AGV roams along */
+const PATH = {
+  draw3D(api, inst, lod){ const ctx=api.ctx; if(!ctx) return;
+    const M=api.M, p=inst.params, pos=inst.pose.position, cx=pos[0]*M, cy=pos[1]*M, R=p.radius*M;
+    ctx.strokeStyle='rgba(120,140,165,0.55)'; if(ctx.setLineDash) ctx.setLineDash([5,5]); ctx.lineWidth=1.5; ctx.beginPath();
+    for(let i=0;i<=56;i++){ const a=i/56*2*Math.PI, P=api.project(cx+R*Math.cos(a), cy+R*Math.sin(a), 0); if(i===0)ctx.moveTo(P[0],P[1]); else ctx.lineTo(P[0],P[1]); }
+    ctx.stroke(); if(ctx.setLineDash) ctx.setLineDash([]); },
+  footprint2D(inst){ const p=inst.params,pos=inst.pose.position,R=p.radius; return [[-R,-R],[R,-R],[R,R],[-R,R]].map(c=>[pos[0]+c[0],pos[1]+c[1]]); },
+  bbox(inst){ const M=0.001,p=inst.params,pos=inst.pose.position,R=p.radius*M,cx=pos[0]*M,cy=pos[1]*M,cz=pos[2]*M; return {min:[cx-R,cy-R,cz],max:[cx+R,cy+R,cz+0.05]}; }
+};
+TZ.registerType('path', PATH);
+TZ.registerType('agv', C);
+
+const A = Object.assign({}, C.defaults);                 // 4 × 2500
+const R = 2800;
+const B = { 'bed.laneCount':6,'bed.idbmLength':3000,'chassis.height':340 };  // bigger variant (trunk.* default)
+const ROW_B = 7000;
+
+const SCENE = [
+  { type:'path', pose:{position:[0,0,0]}, params:{radius:R} },
+  { type:'agv',  pose:{position:[R,0,0],yaw:Math.PI/2}, params:A },
+  { type:'agv',  pose:{position:[0,ROW_B,0],yaw:0},     params:B }
+];
+TZ.setScene(SCENE);
+requestAnimationFrame(()=>TZ.setScene(SCENE));
+addEventListener('load', ()=>TZ.setScene(SCENE));
+
+const main = SCENE[1];
+function updateInfo(){ const p=main.params, x=Math.round(main.pose.position[0]), y=Math.round(main.pose.position[1]);
+  const deg=Math.round(((main.pose.yaw||0)*180/Math.PI)%360), lenX=p['bed.laneCount']*300+2*(p['trunk.gap']+p['trunk.depth']);
+  document.getElementById('infoBody').innerHTML =
+    `<div class="irow"><span>Bed (lanes×len)</span><b>${p['bed.laneCount']} × ${p['bed.idbmLength']}</b></div>`+
+    `<div class="irow"><span>Length X (incl trunks)</span><b>${lenX} mm</b></div>`+
+    `<div class="irow"><span>Trunk gap</span><b>${p['trunk.gap']} mm</b></div>`+
+    `<div class="irow"><span>Trunk height</span><b>${p['trunk.height']} mm</b></div>`+
+    `<div class="irow"><span>Pose X,Y</span><b>${x}, ${y}</b></div>`+
+    `<div class="irow"><span>Heading</span><b>${deg}°</b></div>`; }
+updateInfo();
+
+let animP=null, t=Math.PI/2; const animPBtn=document.getElementById('animPath');
+function tickP(){ t+=0.011; main.pose.position[0]=R*Math.cos(t); main.pose.position[1]=R*Math.sin(t); main.pose.yaw=t+Math.PI/2;
+  TZ.render(); updateInfo(); animP=requestAnimationFrame(tickP); }
+animPBtn.onclick=()=>{ if(animP){cancelAnimationFrame(animP);animP=null;animPBtn.classList.remove('on');animPBtn.textContent='Animate path';}
+  else{animPBtn.classList.add('on');animPBtn.textContent='Pause path';tickP();} };
+
+const lodBtns={ lodAuto:null, lodFull:'full', lodMed:'med', lodSimple:'simple' };
+function setLOD(v,id){ window.__forceLOD=v; TZ.render(); Object.keys(lodBtns).forEach(k=>document.getElementById(k).classList.toggle('on',k===id)); }
+document.getElementById('lodAuto').onclick=()=>setLOD(null,'lodAuto');
+document.getElementById('lodFull').onclick=()=>setLOD('full','lodFull');
+document.getElementById('lodMed').onclick=()=>setLOD('med','lodMed');
+document.getElementById('lodSimple').onclick=()=>setLOD('simple','lodSimple');
+setLOD(null,'lodAuto');
+
+document.getElementById('reset').onclick=()=>{ if(animP){cancelAnimationFrame(animP);animP=null;animPBtn.classList.remove('on');animPBtn.textContent='Animate path';}
+  window.__forceLOD=null; Object.keys(lodBtns).forEach(k=>document.getElementById(k).classList.toggle('on',k==='lodAuto'));
+  t=Math.PI/2; main.pose.position[0]=R; main.pose.position[1]=0; main.pose.yaw=Math.PI/2; TZ.api.cam.az=0.86; TZ.api.cam.el=0.62; TZ.setScene(SCENE); updateInfo(); };
+</script>
+</body>
+</html>

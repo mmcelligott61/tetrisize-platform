@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tetrisize — Zone</title>
+<!-- zone.html — standalone artifact. Contract is INLINED verbatim from zone.js (the
+     canonical file the main session integrates) so it renders even when a preview can't fetch
+     siblings. Conventions: schema in mm, renderer in metres (M=0.001), Z-up, right-handed. -->
+<style>
+  :root{--bg1:#eef2f7;--bg2:#dbe4f0;--ink:#1f2a37;--muted:#5b6b7c;--panel:rgba(255,255,255,0.9);--brd:rgba(20,40,70,0.12);--accent:#2b6cff;--shadow:0 8px 30px rgba(20,40,70,0.12)}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink)}
+  #app{position:fixed;inset:0;background:radial-gradient(130% 130% at 50% 0%,var(--bg1),var(--bg2))}
+  #scene{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}#scene:active{cursor:grabbing}
+  .panel{position:absolute;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--brd);border-radius:13px;box-shadow:var(--shadow);padding:13px 15px;user-select:none}
+  #title{top:16px;left:16px;max-width:330px}#title h1{margin:0;font-size:16px}#title h1 b{color:var(--accent)}
+  #title p{margin:4px 0 0;font-size:11.5px;color:var(--muted);line-height:1.45}
+  #title .warn{margin-top:6px;font-size:11px;font-weight:600;color:#b25400}
+  #info{top:16px;right:16px;width:230px}
+  #info .lbl{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .irow{display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px solid rgba(20,40,70,.07)}
+  .irow:first-of-type{border-top:none}.irow span:first-child{color:var(--muted)}.irow b{font-variant-numeric:tabular-nums}
+  #ctl{bottom:16px;left:16px;display:flex;gap:7px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 32px)}
+  #ctl .grp{display:flex;gap:5px;align-items:center;padding-right:7px;border-right:1px solid var(--brd)}
+  #ctl .grp:last-child{border-right:none}
+  button.ui{cursor:pointer;border:1px solid var(--brd);background:#fff;color:var(--ink);font-size:12px;font-weight:600;padding:7px 10px;border-radius:9px}
+  button.ui:hover{border-color:var(--accent);color:var(--accent)}
+  button.ui.on{border-color:var(--accent);color:#fff;background:var(--accent)}
+  #hint{bottom:16px;left:50%;transform:translateX(-50%);font-size:11.5px;color:var(--muted);border-radius:999px;padding:7px 14px}#hint b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="scene"></canvas>
+  <div class="panel" id="title"><h1>TETRISIZE <b>Zone (floor area)</b></h1>
+    <p>Floor classification: agv_drivable / keepout / storage / staging (schema §2 Zone). Drag orbit · scroll zoom · right-drag pan.</p>
+    <p class="warn">Rectangle form (full polygon later); placeholder size. See spec.md.</p></div>
+  <div class="panel" id="info"><div class="lbl">Zone kinds</div><div id="infoBody"></div></div>
+  <div class="panel" id="ctl"><div class="grp"><button class="ui" id="reset">Reset view</button></div><div class="grp"><button class="ui" id="lodAuto">Auto LOD</button><button class="ui" id="lodFull">Full</button><button class="ui" id="lodMed">Med</button><button class="ui" id="lodSimple">Simple</button></div></div>
+  <div class="panel" id="hint"><b>Drag</b> orbit · <b>Scroll</b> zoom · <b>Right-drag</b> pan</div>
+</div>
+
+<script>
+/* =================== SHARED HARNESS (from _TEMPLATE_component.html) ====================== *//* Verbatim except two lines marked  // [showcase]  — they do not affect crane.js.          */
+const TZ = (function(){
+  const cv=document.getElementById('scene'),ctx=cv.getContext('2d'),M=0.001;
+  let CW=0,CH=0,ORX=0,ORY=0,DPR=Math.min(window.devicePixelRatio||1,2);
+  const cam={az:0.86,el:0.62,S:30,zoom:1,panX:0,panY:0};
+  let CX=0,CY=0,CZ=0, scene=[], registry={}, dragging=false,zT;
+  function resize(){CW=cv.clientWidth;CH=cv.clientHeight;cv.width=CW*DPR;cv.height=CH*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);ORX=CW*.5;ORY=CH*.5;}
+  addEventListener('resize',()=>{resize();render();});resize();
+  function project(x,y,z){const dx=x-CX,dy=CY-y,dz=z-CZ,ca=Math.cos(cam.az),sa=Math.sin(cam.az);   // metres, Z-up, +Y up
+    const rx=dx*ca-dy*sa,G=dx*sa+dy*ca,sy=G*Math.sin(cam.el)-dz*Math.cos(cam.el);
+    return [ORX+rx*cam.S*cam.zoom+cam.panX,ORY+sy*cam.S*cam.zoom+cam.panY];}
+  function depth(x,y){const dx=x-CX,dy=CY-y;return dx*Math.sin(cam.az)+dy*Math.cos(cam.az);}
+  const shade=(hex,f)=>{const r=(hex>>16)&255,g=(hex>>8)&255,b=hex&255,m=v=>Math.max(0,Math.min(255,v*f|0));return `rgb(${m(r)},${m(g)},${m(b)})`;};
+  function quad(p,fill){ctx.beginPath();ctx.moveTo(p[0][0],p[0][1]);for(let i=1;i<4;i++)ctx.lineTo(p[i][0],p[i][1]);ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle='rgba(22,32,48,0.14)';ctx.lineWidth=1;ctx.stroke();}
+  // oriented box (metres): centre cx,cy ; zb..zt ; along/across unit vectors ; half-len/half-wid
+  function obox(cx,cy,zb,zt,al,ac,hl,hw,color){const c=(s,t,z)=>project(cx+al[0]*s+ac[0]*t,cy+al[1]*s+ac[1]*t,z);
+    const b00=c(-hl,-hw,zb),b10=c(hl,-hw,zb),b11=c(hl,hw,zb),b01=c(-hl,hw,zb),t00=c(-hl,-hw,zt),t10=c(hl,-hw,zt),t11=c(hl,hw,zt),t01=c(-hl,hw,zt);
+    const along=depth(cx+al[0]*hl,cy+al[1]*hl)>depth(cx-al[0]*hl,cy-al[1]*hl), across=depth(cx+ac[0]*hw,cy+ac[1]*hw)>depth(cx-ac[0]*hw,cy-ac[1]*hw);
+    quad(along?[b10,b11,t11,t10]:[b00,b01,t01,t00],shade(color,.80));quad(across?[b01,b11,t11,t01]:[b00,b10,t10,t00],shade(color,.64));quad([t00,t10,t11,t01],shade(color,1));}
+
+  // ---- shared IDBM bed helper (metres) — every vehicle bed should use this for visual consistency ----
+  function idbm(cx,cy,cz,len,yaw,lod){const al=[Math.cos(yaw),Math.sin(yaw)],ac=[-al[1],al[0]],hL=len/2,EL=.32,EHW=.15,BHW=.14,ET=.20,DT=.08,BB=.115,TF=.04;
+    if(lod==='simple'){obox(cx,cy,cz,cz+ET,al,ac,hL,EHW,0x6f7884);return;}
+    const eOff=hL-EL/2,bHL=Math.max(0,hL-EL),ctr=o=>[cx+al[0]*o,cy+al[1]*o];
+    const end=o=>{const c=ctr(o);if(lod==='full'){obox(c[0],c[1],cz,cz+DT,al,ac,EL/2,EHW,0x2e333a);obox(c[0],c[1],cz+DT,cz+ET,al,ac,EL/2,EHW,0xe9ecef);}else obox(c[0],c[1],cz,cz+ET,al,ac,EL/2,EHW,0xe0e4e9);};
+    const body=()=>{if(bHL>0)obox(cx,cy,cz+BB,cz+ET,al,ac,bHL,BHW,0x33383f);};
+    [{d:depth(ctr(-eOff)[0],ctr(-eOff)[1]),f:()=>end(-eOff)},{d:depth(cx,cy),f:body},{d:depth(ctr(eOff)[0],ctr(eOff)[1]),f:()=>end(eOff)}].sort((a,b)=>a.d-b.d).forEach(p=>p.f());
+    const a0=-(hL-TF),a1=hL-TF,zt=cz+ET+.001,c=(s,t)=>project(cx+al[0]*s+ac[0]*t,cy+al[1]*s+ac[1]*t,zt);
+    quad([c(a0,-BHW),c(a1,-BHW),c(a1,BHW),c(a0,BHW)],shade(0x434b56,1));}
+
+  const api={project,depth,obox,quad,shade,M,idbm,get ctx(){return ctx;},cam};
+
+  function bboxAll(){let mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];scene.forEach(i=>{const b=registry[i.type].bbox(i);for(let k=0;k<3;k++){mn[k]=Math.min(mn[k],b.min[k]);mx[k]=Math.max(mx[k],b.max[k]);}});return{mn,mx};}
+  function fit(){const {mn,mx}=bboxAll();CX=(mn[0]+mx[0])/2;CY=(mn[1]+mx[1])/2;CZ=(mn[2]+mx[2])/2;
+    const ca=Math.cos(cam.az),sa=Math.sin(cam.az),se=Math.sin(cam.el),ce=Math.cos(cam.el);let X0=1e9,X1=-1e9,Y0=1e9,Y1=-1e9;
+    for(const x of[mn[0],mx[0]])for(const y of[mn[1],mx[1]])for(const z of[mn[2],mx[2]]){const dx=x-CX,dy=CY-y,dz=z-CZ,rx=(dx*ca-dy*sa)*cam.S,sy=((dx*sa+dy*ca)*se-dz*ce)*cam.S;X0=Math.min(X0,rx);X1=Math.max(X1,rx);Y0=Math.min(Y0,sy);Y1=Math.max(Y1,sy);}
+    cam.zoom=0.80*Math.min(CW/((X1-X0)||1),CH/((Y1-Y0)||1));cam.panX=cam.panY=0;}
+  function render(){ctx.clearRect(0,0,CW,CH);
+    // ground grid
+    ctx.strokeStyle='rgba(120,140,165,0.22)';ctx.lineWidth=1;ctx.beginPath();const r=10;
+    for(let x=Math.floor(CX-r);x<=CX+r;x++){const a=project(x,CY-r,0),b=project(x,CY+r,0);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}
+    for(let y=Math.floor(CY-r);y<=CY+r;y++){const a=project(CX-r,y,0),b=project(CX+r,y,0);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}
+    ctx.stroke();
+    const lod=window.__forceLOD||(dragging?'simple':(scene.length>200?'med':'full'));   // [showcase] honor forced LOD
+    const order=scene.map((i,k)=>{const b=registry[i.type].bbox(i),mid=[(b.min[0]+b.max[0])/2,(b.min[1]+b.max[1])/2];return[depth(mid[0],mid[1]),k];}).sort((a,b)=>a[0]-b[0]);
+    order.forEach(o=>{const i=scene[o[1]];registry[i.type].draw3D(api,i,lod);});}
+  // controls
+  let drag=null;
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+  cv.addEventListener('pointerdown',e=>{try{cv.setPointerCapture(e.pointerId);}catch(_){}drag={x:e.clientX,y:e.clientY,btn:e.button};dragging=true;});
+  cv.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;
+    if(drag.btn===2||e.shiftKey){cam.panX+=dx;cam.panY+=dy;}else{cam.az-=dx*.01;cam.el=Math.max(.08,Math.min(1.45,cam.el-dy*.005));}render();});
+  cv.addEventListener('pointerup',()=>{drag=null;dragging=false;render();});
+  cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,wx=(mx-ORX-cam.panX)/(cam.S*cam.zoom),wy=(my-ORY-cam.panY)/(cam.S*cam.zoom);
+    cam.zoom=Math.max(.05,Math.min(60,cam.zoom*(e.deltaY<0?1.1:.9)));cam.panX=mx-ORX-wx*cam.S*cam.zoom;cam.panY=my-ORY-wy*cam.S*cam.zoom;
+    dragging=true;render();clearTimeout(zT);zT=setTimeout(()=>{dragging=false;render();},90);},{passive:false});
+  return { api, registerType:(id,mod)=>registry[id]=mod, setScene:s=>{scene=s;fit();render();}, render };   // [showcase] expose render
+})();
+/* ===================== END SHARED HARNESS ============================= */
+</script>
+
+<script>
+/* zone.js — contract object (TZ_ZONE); INLINED verbatim, canonical copy is zone.js */
+/* ======================================================================
+   Tetrisize Platform — Zone (floor area)
+   Contract object: window.TZ_ZONE   (read components/COMPONENT_AUTHORING_BRIEF.md)
+
+   A floor polygon classifying an area: agv_drivable | keepout | storage | staging
+   (schema §2 Zone). Drawn as a translucent floor patch + coloured outline.
+   Units: schema in mm, renderer in metres (api.M = 0.001). Z-up. Datum = pose (centre).
+   ⚠ Placeholder size; rectangle form (extend to full polygon later). See zone/spec.md.
+   ====================================================================== */
+(function () {
+  "use strict";
+  var KIND_RGB = { agv_drivable: "46,160,67", keepout: "200,60,60", storage: "43,108,255", staging: "210,150,30" };
+
+  var DEFAULTS = { "zone.width": 6000, "zone.depth": 4000, "zone.kind": "agv_drivable" };
+  function num(inst, k) { var v = inst && inst.params ? inst.params[k] : undefined; return (v == null) ? DEFAULTS[k] : v; }
+
+  var SCHEMA_TYPE = {
+    typeId: "zone", name: "Zone (floor area)", category: "zone",
+    status: "DRAFT — rectangle form; schema §2 supports a full polygon. Placeholder size.",
+    params: [
+      { key: "zone.width", type: "number", default: 6000, units: "mm", desc: "Zone width (local X)." },
+      { key: "zone.depth", type: "number", default: 4000, units: "mm", desc: "Zone depth (local Y)." },
+      { key: "zone.kind",  type: "enum", default: "agv_drivable", options: ["agv_drivable", "keepout", "storage", "staging"], desc: "Zone classification (schema §2)." }
+    ],
+    geometry: { note: "Flat floor patch (rectangle = polygon shortcut). Translucent fill + coloured outline by kind.",
+      frame: "Datum = pose {position,yaw} at centre; local X = width, Y = depth, on the floor (Z≈0).",
+      polygon: "schema §2 Zone.polygon[] — this rectangle is the simple case; full polygon support is a later extension." },
+    connectionPoints: [],
+    datum: { kind: "pose", form: "{ position:[x,y,z] mm, yaw rad }" },
+    meta: { author: "component-authoring session (parallel)", kinds: Object.keys(KIND_RGB),
+      references: ["coordinate_frame_and_component_schema_v0.1.md §2 (Zone: agv_drivable|keepout|storage|staging)"],
+      remainingAssumptions: "rectangle vs arbitrary polygon; default size; colour scheme." }
+  };
+
+  window.TZ_ZONE = {
+    typeId: "zone", category: "zone", schemaType: SCHEMA_TYPE, defaults: DEFAULTS,
+
+    draw3D: function (api, inst, lod) {
+      var ctx = api.ctx; if (!ctx) return;
+      var M = api.M, pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0;
+      var cx = pos[0] * M, cy = pos[1] * M, cz = pos[2] * M + 0.006, al = [Math.cos(yaw), Math.sin(yaw)], ac = [-al[1], al[0]];
+      var hw = num(inst, "zone.width") / 2 * M, hd = num(inst, "zone.depth") / 2 * M;
+      var rgb = KIND_RGB[num(inst, "zone.kind")] || KIND_RGB.agv_drivable;
+      var c = function (sx, sy) { return api.project(cx + al[0] * (sx * hw) + ac[0] * (sy * hd), cy + al[1] * (sx * hw) + ac[1] * (sy * hd), cz); };
+      var p = [c(-1, -1), c(1, -1), c(1, 1), c(-1, 1)];
+      ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]); for (var i = 1; i < 4; i++) ctx.lineTo(p[i][0], p[i][1]); ctx.closePath();
+      ctx.fillStyle = "rgba(" + rgb + ",0.16)"; ctx.fill();
+      ctx.strokeStyle = "rgba(" + rgb + ",0.9)"; ctx.lineWidth = 2; ctx.stroke();
+    },
+
+    footprint2D: function (inst) {
+      var pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0, al = [Math.cos(yaw), Math.sin(yaw)], ac = [-al[1], al[0]];
+      var hw = num(inst, "zone.width") / 2, hd = num(inst, "zone.depth") / 2;
+      return [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(function (q) { return [pos[0] + al[0] * q[0] + ac[0] * q[1], pos[1] + al[1] * q[0] + ac[1] * q[1]]; });
+    },
+
+    bbox: function (inst) {
+      var M = 0.001, pose = inst.pose || {}, pos = pose.position || [0, 0, 0], yaw = pose.yaw || 0, cx = pos[0] * M, cy = pos[1] * M, cz = pos[2] * M;
+      var hw = num(inst, "zone.width") / 2 * M, hd = num(inst, "zone.depth") / 2 * M, ca = Math.abs(Math.cos(yaw)), sa = Math.abs(Math.sin(yaw));
+      var ex = ca * hw + sa * hd, ey = sa * hw + ca * hd;
+      return { min: [cx - ex, cy - ey, cz], max: [cx + ex, cy + ey, cz + 0.02] };
+    }
+  };
+})();
+</script>
+
+<script>
+/* =================== STANDALONE SHOWCASE (zone.html only) ============= */
+const C = window.TZ_ZONE;
+TZ.registerType('zone', C);
+const SCENE = [
+  { type:'zone', pose:{position:[-3500,0,0]},    params:{'zone.width':6000,'zone.depth':4000,'zone.kind':'agv_drivable'} },
+  { type:'zone', pose:{position:[3500,0,0]},     params:{'zone.width':6000,'zone.depth':4000,'zone.kind':'keepout'} },
+  { type:'zone', pose:{position:[-3500,5200,0]}, params:{'zone.width':6000,'zone.depth':4000,'zone.kind':'storage'} },
+  { type:'zone', pose:{position:[3500,5200,0]},  params:{'zone.width':6000,'zone.depth':4000,'zone.kind':'staging'} }
+];
+TZ.setScene(SCENE);
+requestAnimationFrame(()=>TZ.setScene(SCENE));
+addEventListener('load', ()=>TZ.setScene(SCENE));
+function updateInfo(){ document.getElementById('infoBody').innerHTML =
+  `<div class="irow"><span>agv_drivable</span><b>green</b></div>`+
+  `<div class="irow"><span>keepout</span><b>red</b></div>`+
+  `<div class="irow"><span>storage</span><b>blue</b></div>`+
+  `<div class="irow"><span>staging</span><b>amber</b></div>`+
+  `<div class="irow"><span>each</span><b>6000 × 4000 mm</b></div>`; }
+updateInfo();
+const lodBtns={ lodAuto:null, lodFull:'full', lodMed:'med', lodSimple:'simple' };
+function setLOD(v,id){ window.__forceLOD=v; TZ.render(); Object.keys(lodBtns).forEach(k=>document.getElementById(k).classList.toggle('on',k===id)); }
+document.getElementById('lodAuto').onclick=()=>setLOD(null,'lodAuto');
+document.getElementById('lodFull').onclick=()=>setLOD('full','lodFull');
+document.getElementById('lodMed').onclick=()=>setLOD('med','lodMed');
+document.getElementById('lodSimple').onclick=()=>setLOD('simple','lodSimple');
+setLOD(null,'lodAuto');
+document.getElementById('reset').onclick=()=>{ window.__forceLOD=null;
+  Object.keys(lodBtns).forEach(k=>document.getElementById(k).classList.toggle('on',k==='lodAuto'));
+  TZ.api.cam.az=0.86; TZ.api.cam.el=0.62; TZ.setScene(SCENE); updateInfo(); };
+</script>
+</body>
+</html>

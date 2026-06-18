@@ -1,0 +1,31 @@
+{
+  "typeId": "mezzanine",
+  "name": "Mezzanine Deck",
+  "category": "mezzanine_deck",
+  "status": "DRAFT - placeholder dimensions; confirm with Mike.",
+  "params": [
+    { "key": "deck.width",     "type": "number", "default": 8000, "units": "mm", "desc": "Deck width (local X)." },
+    { "key": "deck.depth",     "type": "number", "default": 6000, "units": "mm", "desc": "Deck depth (local Y)." },
+    { "key": "deck.height",    "type": "number", "default": 3000, "units": "mm", "desc": "Deck top surface height above floor (Z)." },
+    { "key": "deck.thickness", "type": "number", "default": 200, "units": "mm", "assumption": true, "desc": "Deck slab thickness." },
+    { "key": "post.section",   "type": "number", "default": 150, "units": "mm", "assumption": true, "desc": "Square post section." },
+    { "key": "post.cols",      "type": "number", "default": 3, "min": 2, "units": "count", "assumption": true, "desc": "Post columns along X." },
+    { "key": "post.rows",      "type": "number", "default": 2, "min": 2, "units": "count", "assumption": true, "desc": "Post rows along Y." }
+  ],
+  "geometry": {
+    "note": "Posts grid (cols x rows) floor->deck underside; deck slab on top.",
+    "frame": "Datum = pose {position,yaw} at base centre; local X = width, Y = depth, Z up.",
+    "deck": "slab of deck.thickness with top at deck.height; posts at a cols x rows grid spanning the footprint.",
+    "colours": "Steel posts 0x55606e, deck 0x8a93a0."
+  },
+  "connectionPoints": [
+    { "id": "deck_level", "face": "top", "offset": [0, 0, 1], "kind": "level", "desc": "Deck top surface - a level the platform can run on." }
+  ],
+  "datum": { "kind": "pose", "form": "{ position:[x,y,z] mm, yaw rad }" },
+  "defaults": { "deck.width": 8000, "deck.depth": 6000, "deck.height": 3000, "deck.thickness": 200, "post.section": 150, "post.cols": 3, "post.rows": 2 },
+  "meta": {
+    "author": "component-authoring session (parallel)",
+    "references": ["coordinate_frame_and_component_schema_v0.1.md section 2 (mezzanine_deck), section 1 (Level)"],
+    "remainingAssumptions": "deck.thickness, post.section, post grid, handrails, stairs. Appearance to be revisited."
+  }
+}

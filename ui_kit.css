@@ -1,0 +1,108 @@
+/* ============================================================================
+   TETRISIZE PLATFORM — shared UI kit (design system v1)
+   One design language for every screen. Brand palette from colorguide.png:
+   PMS 308c #006B8F · cyan #00AEEF · 179c #E03C31 · 124c #EAAB00 · 363c #3F9C35
+   · 376c #84BD00 · black90 #3D3935. Wordmark font: Pirulen.
+   ========================================================================== */
+@font-face{font-family:'Pirulen';src:url('assets/pirulen.otf') format('opentype');font-display:swap}
+
+:root, html[data-tz-theme="day"]{
+  --tz-blue:#006B8F; --tz-cyan:#00AEEF; --tz-orange:#E03C31; --tz-gold:#EAAB00;
+  --tz-green:#3F9C35; --tz-lime:#84BD00; --tz-black:#3D3935;
+  --tz-bg1:#eef2f7; --tz-bg2:#dbe4f0; --tz-panel:rgba(255,255,255,0.52); --tz-panel-solid:#ffffff;   /* liquid glass: panels show the scene through them */
+  --tz-ink:#1f2a37; --tz-muted:#5b6b7c; --tz-brd:rgba(20,40,70,0.12);
+  --tz-accent:var(--tz-blue); --tz-accent2:var(--tz-cyan);
+  --tz-bar:#0c2330; --tz-bar-ink:#dce8ef; --tz-bar-muted:#7e98a6;
+  --tz-shadow:0 8px 30px rgba(20,40,70,0.12);
+}
+html[data-tz-theme="night"]{
+  --tz-bg1:#12161d; --tz-bg2:#0a0e14; --tz-panel:rgba(20,27,36,0.55); --tz-panel-solid:#1a212b;
+  --tz-ink:#e6edf4; --tz-muted:#8b9aab; --tz-brd:rgba(150,180,210,0.14);
+  --tz-accent:var(--tz-cyan); --tz-accent2:var(--tz-lime);
+  --tz-bar:#070d12; --tz-bar-ink:#dce8ef; --tz-bar-muted:#6d8492;
+  --tz-shadow:0 8px 30px rgba(0,0,0,0.5);
+}
+
+/* screens place their app below the bar */
+#app{top:52px !important}
+
+/* ---- the top menu bar (every screen) ---- */
+#tzBar{position:fixed;top:0;left:0;right:0;height:52px;z-index:1000;display:flex;align-items:center;gap:6px;
+  padding:0 14px;background:var(--tz-bar);border-bottom:2px solid var(--tz-cyan);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;user-select:none}
+#tzBar .tz-logo{height:39px;display:block;margin-right:6px}   /* 150% of the original 26px */
+#tzBar .tz-sub{font-family:'Pirulen',sans-serif;font-size:8.5px;letter-spacing:.22em;color:var(--tz-cyan);
+  margin-right:18px;margin-top:14px;white-space:nowrap}
+#tzBar .tz-tabs{display:flex;gap:2px;height:100%;align-items:stretch}
+#tzBar .tz-tab{display:flex;align-items:center;padding:0 13px;color:var(--tz-bar-muted);font-size:9px;
+  font-family:'Pirulen',sans-serif;font-weight:400;text-decoration:none;border-bottom:3px solid transparent;letter-spacing:.08em}   /* corporate wordmark font */
+#tzBar .tz-tab:hover{color:var(--tz-bar-ink)}
+#tzBar .tz-tab.on{color:#fff;border-bottom-color:var(--tz-cyan)}
+#tzBar .tz-tab.soon{cursor:default;opacity:.45}
+#tzBar .tz-tab.soon:hover{color:var(--tz-bar-muted)}
+#tzBar .tz-tab.soon .tz-pill{font-size:8.5px;background:rgba(255,255,255,.1);color:var(--tz-bar-muted);
+  border-radius:99px;padding:2px 6px;margin-left:6px;letter-spacing:.05em}
+#tzBar .tz-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+#tzBar .tz-iconbtn{cursor:pointer;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);
+  color:var(--tz-bar-ink);border-radius:8px;font-size:13px;padding:5px 10px}
+#tzBar .tz-iconbtn:hover{border-color:var(--tz-cyan);color:#fff}
+
+/* ---- speed slider (reusable control) ---- */
+.tz-speed{display:flex;align-items:center;gap:9px;color:var(--tz-bar-ink);font-size:11px}
+.tz-speed label{color:var(--tz-bar-muted);font-weight:700;letter-spacing:.06em;font-size:10px}
+.tz-speed input[type=range]{-webkit-appearance:none;width:130px;height:4px;border-radius:2px;
+  background:linear-gradient(90deg,var(--tz-cyan),var(--tz-gold));outline:none}
+.tz-speed input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:#fff;border:2.5px solid var(--tz-cyan);cursor:pointer}
+.tz-speed .tz-speedval{min-width:34px;text-align:right;font-weight:800;font-variant-numeric:tabular-nums;color:#fff}
+
+/* ---- shared panel/button language for in-screen UI ---- */
+.tz-panel{background:var(--tz-panel);backdrop-filter:blur(14px) saturate(170%);-webkit-backdrop-filter:blur(14px) saturate(170%);
+  border:1px solid var(--tz-brd);border-radius:13px;box-shadow:var(--tz-shadow),inset 0 1px 0 rgba(255,255,255,0.35);color:var(--tz-ink)}
+
+/* LITE glass (auto on Windows, toggle in the Layers menu): no backdrop blur — the
+   compositor re-blurs every panel each frame over the animating canvas, which is
+   what makes Edge crawl. Panels go near-opaque so legibility holds without blur. */
+html.tz-lite{--tz-panel:rgba(255,255,255,0.92)}
+html.tz-lite[data-tz-theme="night"]{--tz-panel:rgba(24,30,39,0.93)}
+html.tz-lite .tz-panel,html.tz-lite .panel{backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+html.tz-lite #tzCube .tz-cube-glass{display:none}
+.tz-btn{cursor:pointer;border:1px solid var(--tz-brd);background:var(--tz-panel-solid);color:var(--tz-ink);
+  font-size:12px;font-weight:600;padding:7px 11px;border-radius:9px}
+.tz-btn:hover{border-color:var(--tz-accent);color:var(--tz-accent)}
+.tz-btn.on{border-color:var(--tz-accent);background:var(--tz-accent);color:#fff}
+
+/* ---- ViewCube (lower-right navigation, paper-style 3D glass cube) ---- */
+#tzCube{position:fixed;right:18px;bottom:18px;z-index:900;width:150px;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;user-select:none}
+/* the .tz-cube-glass layer sits under the canvas; its clip-path is updated every frame
+   to the cube silhouette so the backdrop blur follows the cube exactly ("Apple glass") */
+#tzCube .tz-cube-stage{position:relative;width:140px;height:140px;margin:0 auto}
+#tzCube .tz-cube-glass{position:absolute;inset:0;pointer-events:none;
+  backdrop-filter:blur(11px) saturate(175%) brightness(1.06);
+  -webkit-backdrop-filter:blur(11px) saturate(175%) brightness(1.06)}
+#tzCube .tz-cube-stage canvas{position:absolute;inset:0;width:140px;height:140px;touch-action:none}
+#tzCube .tz-cube-grid{display:grid;grid-template-columns:30px 60px 30px;grid-template-rows:26px 54px 26px;gap:3px;
+  justify-content:center;align-items:center}
+#tzCube .tz-face,#tzCube .tz-arrow{cursor:pointer;border:1px solid var(--tz-brd);background:var(--tz-panel);
+  color:var(--tz-ink);border-radius:7px;font-size:10px;font-weight:700;display:flex;align-items:center;
+  justify-content:center;height:100%;letter-spacing:.04em;box-shadow:var(--tz-shadow)}
+#tzCube .tz-face:hover,#tzCube .tz-arrow:hover{border-color:var(--tz-accent);color:var(--tz-accent)}
+#tzCube .tz-face.tz-top{font-size:9.5px}
+#tzCube .tz-cube-foot{display:flex;gap:3px;margin-top:4px;justify-content:center}
+#tzCube .tz-cube-foot .tz-btn{font-size:9.5px;padding:4px 6px;border-radius:7px}
+
+/* ---- Layers popover ---- */
+#tzLayers{position:fixed;right:18px;bottom:218px;z-index:901;width:218px;padding:12px 13px;display:none}
+#tzLayers h4{margin:0 0 8px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--tz-muted)}
+#tzLayers .tz-lrow{display:flex;align-items:center;justify-content:space-between;font-size:12px;padding:4px 0}
+#tzLayers .tz-3way{display:flex;gap:3px}
+#tzLayers .tz-3way button{cursor:pointer;font-size:9.5px;padding:3px 7px;border-radius:6px;border:1px solid var(--tz-brd);
+  background:transparent;color:var(--tz-muted)}
+#tzLayers .tz-3way button.on{background:var(--tz-accent);border-color:var(--tz-accent);color:#fff}
+#tzLayers .tz-preset{margin-top:9px;width:100%}
+#tzLayers .tz-floor-h{margin:11px 0 4px !important;padding-top:9px;border-top:1px solid var(--tz-brd)}
+#tzLayers .tz-swatches{display:flex;gap:6px}
+#tzLayers .tz-swatches button{width:20px;height:20px;border-radius:50%;cursor:pointer;padding:0;
+  border:2px solid rgba(120,135,155,0.35)}
+#tzLayers .tz-swatches button.on{border-color:var(--tz-accent);box-shadow:0 0 0 2px rgba(0,174,239,0.30)}

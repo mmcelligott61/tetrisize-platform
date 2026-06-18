@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tetrisize Platform — Reports</title>
+<link rel="stylesheet" href="ui_kit.css">
+<script>window.TZ_SCREEN='reports';</script>
+<script src="ui_kit.js"></script>
+<style>
+  *{box-sizing:border-box} html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  body{background:radial-gradient(130% 130% at 50% 0%,var(--tz-bg1),var(--tz-bg2));color:var(--tz-ink)}
+  #wrap{max-width:980px;margin:0 auto;padding:80px 24px 30px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+  .kpi{padding:14px 17px}.kpi b{font-size:26px;display:block;font-variant-numeric:tabular-nums}
+  .kpi span{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--tz-muted)}
+  .pane{padding:17px 20px;margin-bottom:14px}
+  .pane h3{margin:0 0 10px;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tz-muted)}
+  svg{width:100%;height:150px;display:block}
+  .leg{font-size:10.5px;color:var(--tz-muted);display:flex;gap:16px;margin-top:6px}
+  .leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="kpis">
+    <div class="kpi tz-panel"><span>Pallets in</span><b id="kIn">—</b></div>
+    <div class="kpi tz-panel"><span>Sort moves</span><b id="kSort">—</b></div>
+    <div class="kpi tz-panel"><span>Pallets shipped</span><b id="kOut">—</b></div>
+    <div class="kpi tz-panel"><span>Session window</span><b id="kWin">—</b></div>
+  </div>
+  <div class="pane tz-panel"><h3>Cumulative flow</h3><svg id="flowChart" viewBox="0 0 960 150" preserveAspectRatio="none"></svg>
+    <div class="leg"><span><i style="background:var(--tz-cyan)"></i>Arrived</span><span><i style="background:var(--tz-green)"></i>Sorted</span><span><i style="background:var(--tz-orange)"></i>Shipped</span></div></div>
+  <div class="pane tz-panel"><h3>Storage density %</h3><svg id="occChart" viewBox="0 0 960 150" preserveAspectRatio="none"></svg>
+    <div class="leg"><span><i style="background:var(--tz-cyan)"></i>Array 1</span><span><i style="background:var(--tz-gold)"></i>Array 2</span></div></div>
+</div>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  function line(svg, data, key, color, maxV){
+    if(data.length<2)return '';
+    const W=960,H=150,n=data.length;
+    const pts=data.map((d,i)=>(i/(n-1)*W).toFixed(1)+','+(H-6-(d[key]/maxV)*(H-14)).toFixed(1)).join(' ');
+    return '<polyline fill="none" stroke="'+color+'" stroke-width="2.5" points="'+pts+'"/>';
+  }
+  function tick(){ let r=[]; try{ r=JSON.parse(localStorage.getItem('tz-report')||'[]'); }catch(e){}
+    if(!r.length)return;
+    const last=r[r.length-1];
+    $('kIn').textContent=last.inn; $('kSort').textContent=last.sort; $('kOut').textContent=last.out;
+    $('kWin').textContent=Math.round((last.t-r[0].t)/60000)+' min';
+    const css=getComputedStyle(document.documentElement);
+    const cyan=css.getPropertyValue('--tz-cyan')||'#00AEEF', green=css.getPropertyValue('--tz-green')||'#3F9C35',
+          orange=css.getPropertyValue('--tz-orange')||'#E03C31', gold=css.getPropertyValue('--tz-gold')||'#EAAB00';
+    const mF=Math.max(10,last.inn,last.sort,last.out);
+    $('flowChart').innerHTML=line($('flowChart'),r,'inn',cyan,mF)+line($('flowChart'),r,'sort',green,mF)+line($('flowChart'),r,'out',orange,mF);
+    $('occChart').innerHTML=line($('occChart'),r,'o1',cyan,100)+line($('occChart'),r,'o2',gold,100);
+  }
+  tick(); setInterval(tick,3000);
+})();
+</script>
+</body>
+</html>

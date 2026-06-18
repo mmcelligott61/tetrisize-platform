@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tetrisize Platform — Commissioning</title>
+<link rel="stylesheet" href="ui_kit.css">
+<script>window.TZ_SCREEN='commissioning';</script>
+<script src="ui_kit.js"></script>
+<style>
+  *{box-sizing:border-box} html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  body{background:radial-gradient(130% 130% at 50% 0%,var(--tz-bg1),var(--tz-bg2));color:var(--tz-ink)}
+  #wrap{max-width:760px;margin:0 auto;padding:80px 24px 30px}
+  .pane{padding:20px 24px;margin-bottom:14px}
+  h2{margin:0 0 4px;font-size:17px} .sub{color:var(--tz-muted);font-size:12px;margin:0 0 18px;line-height:1.5}
+  .crow{display:grid;grid-template-columns:210px 1fr 92px;gap:14px;align-items:center;padding:11px 0;border-top:1px solid var(--tz-brd)}
+  .crow:first-of-type{border-top:none}
+  .crow label{font-size:12.5px;font-weight:600} .crow small{display:block;color:var(--tz-muted);font-weight:400;font-size:10.5px}
+  .crow output{font-size:13px;font-weight:800;text-align:right;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:linear-gradient(90deg,var(--tz-cyan),var(--tz-gold))}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:#fff;border:2.5px solid var(--tz-accent);cursor:pointer}
+  .ro{color:var(--tz-muted);font-size:12px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="pane tz-panel">
+    <h2>Commissioning</h2>
+    <p class="sub">The global variables, applied LIVE to the running facility (open the Viewer in another tab and watch the change land — the Brain logs every applied value).</p>
+    <div class="crow"><label>Car travel speed<small>shuttle / crane corridor cruise</small></label>
+      <input type="range" id="vmax" min="30" max="90" step="5" value="60"><output id="vmaxo">60 m/min</output></div>
+    <div class="crow"><label>Crane lift speed<small>vertical, simultaneous with travel</small></label>
+      <input type="range" id="lift" min="15" max="45" step="5" value="30"><output id="lifto">30 m/min</output></div>
+    <div class="crow"><label>Sorter activation latch<small>ARRAY 1 density before CAR-2 starts</small></label>
+      <input type="range" id="latch2" min="50" max="95" step="1" value="80"><output id="latch2o">80%</output></div>
+    <div class="crow"><label>Shipping activation latch<small>ARRAY 2 density before CAR-3 starts</small></label>
+      <input type="range" id="latch3" min="50" max="95" step="1" value="65"><output id="latch3o">65%</output></div>
+    <div class="crow"><label>Arrival cadence<small>seconds between entrance arrivals (1× time)</small></label>
+      <input type="range" id="spawnSec" min="3" max="30" step="1" value="8"><output id="spawnSeco">8 s</output></div>
+    <div class="crow"><label>Commissioning gap (gap_mm)<small>pallet-to-pallet gap, engine-wide</small></label>
+      <span class="ro">200 mm — read-only in this build (engine constant; configurable at commissioning of the physical system)</span><output>200 mm</output></div>
+  </div>
+</div>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const fields=['vmax','lift','latch2','latch3','spawnSec'];
+  function fmt(k,v){ return k==='vmax'||k==='lift' ? v+' m/min' : (k==='spawnSec' ? v+' s' : v+'%'); }
+  function push(){ const o={ vmax:+$('vmax').value/60, lift:+$('lift').value/60, latch2:+$('latch2').value/100, latch3:+$('latch3').value/100, spawnSec:+$('spawnSec').value };
+    try{ localStorage.setItem('tz-commission', JSON.stringify(o)); }catch(e){} }
+  fields.forEach(k=>{ $(k).oninput=()=>{ $(k+'o').textContent=fmt(k,$(k).value); push(); }; });
+  try{ const cm=JSON.parse(localStorage.getItem('tz-commission')||'null');                       // restore current values
+    if(cm){ if(cm.vmax)$('vmax').value=Math.round(cm.vmax*60); if(cm.lift)$('lift').value=Math.round(cm.lift*60);
+      if(cm.latch2)$('latch2').value=Math.round(cm.latch2*100); if(cm.latch3)$('latch3').value=Math.round(cm.latch3*100);
+      if(cm.spawnSec)$('spawnSec').value=cm.spawnSec;
+      fields.forEach(k=>$(k+'o').textContent=fmt(k,$(k).value)); } }catch(e){}
+})();
+</script>
+</body>
+</html>
