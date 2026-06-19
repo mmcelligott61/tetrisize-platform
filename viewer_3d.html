@@ -1251,6 +1251,8 @@
       if(s[0]>-M*3&&s[0]<CW+M*3&&s[1]>-M*3&&s[1]<CH+M*3)vis.push([K(vx,vy,0.1),-1,v]);});
     objects.forEach(o=>{const m=registry[o.type];if(!m)return;const ox=o.pose.position[0]*MM,oy=o.pose.position[1]*MM,oz=(o.pose.position[2]||0)*MM,s=project(ox,oy,oz+0.1);   // static structures into the same depth sort for correct occlusion
       if(s[0]>-M*3&&s[0]<CW+M*3&&s[1]>-M*3&&s[1]<CH+M*3){ if(m.category==='mezzanine_deck')decks.push(o); else vis.push([K(ox,oy,oz+0.1),-1,o]); } });   // a mezzanine deck is the upper FLOOR — drawn between ground & upper content so its IDBMs land on top
+    const _rp=rackParts();   // columns + braces interleave in the depth sort; BEAMS draw in a pre-pass so IDBMs always occlude them (except end views)
+    _rp.forEach(p=>{ if(p.kind!=='beam')vis.push([K(p.k[0],p.k[1],p.k[2]),-1,{_rackPart:p}]); });
     renderLoads.forEach(ld=>{ if((renderShuttles.length&&mdAreaLoad(ld))||ld._carry||ld._xferCar)return;   // pallets on/transferring at a car paint bound to THAT car — never behind or under it
       const s=project(ld.x,ld.y,ld.cz+0.1);
       if(s[0]>-M&&s[0]<CW+M&&s[1]>-M&&s[1]<CH+M){ld.cx=ld.x;ld.cy=ld.y;vis.push([K(ld.x,ld.y,ld.cz),-1,ld]);}});
@@ -1263,12 +1265,18 @@
         for(let k=0;k<SEG;k++){const t2=(k+0.5)/SEG-0.5,sx=rx+u[0]*(t2*tv*MM),sy=ry+u[1]*(t2*tv*MM);
           vis.push([K(sx,sy,mt+0.1),-1,{_rail:{x:sx,y:sy,z0:mt+0.04,z1:mt+0.16,u:u,ac:ac,half:segHalf,w:0.08,col:0x586173}}]);}}});
     withLayer('vehicles',()=>floorRails.forEach(r=>api.obox(r.x,r.y,r.z0,r.z1,r.u,r.ac,r.half,r.w,r.col)));   // BEHIND the scene (floor rail sits under everything)
+    withLayer('structure',()=>_rp.filter(p=>p.kind==='beam').sort((a,b)=>K(a.k[0],a.k[1],a.k[2])-K(b.k[0],b.k[1],b.k[2])).forEach(p=>api.obox.apply(null,p.box)));   // ORANGE beams pre-pass: under all IDBMs (floor + upper) → IDBMs occlude them
     const n=vis.length+floor.length, lod = dragging?'simple':(n>4500?'simple':(n>450?'med':'full')), vlod=dragging?'simple':'full';   // belts keep the two-tone IDBM design even at full-facility counts (med); only camera-drag drops to grey boxes
     withLayer('idbms',()=>floor.sort((a,b)=>a[0]-b[0]).forEach(o=>drawIdbm(idbms[o[1]],lod)));   // FLOOR first → every pallet paints on top of the belts
     withLayer('structure',()=>decks.forEach(o=>registry[o.type].draw3D(api,o,lod)));             // MEZZANINE decks next → they cover ground IDBMs, and the upper-level IDBMs (in vis) then paint ON TOP
     vis.sort((a,b)=>a[0]-b[0]).forEach(o=>{const t=o[2];
       if(t&&t._idbm)withLayer('idbms',()=>drawIdbm(t._idbm,lod));
       else if(t&&t._rail)withLayer('vehicles',()=>{const r=t._rail;api.obox(r.x,r.y,r.z0,r.z1,r.u,r.ac,r.half,r.w,r.col);});   // monorail segment, occluded correctly by nearer stacks
+      else if(t&&t._rackPart)withLayer('structure',()=>{ const p=t._rackPart;
+        if(p.box){ api.obox.apply(null,p.box); }
+        else if(p.line){ const L=p.line,A=project(L[0],L[1],L[2]),B=project(L[3],L[4],L[5]);   // brace = projected member
+          ctx.save(); ctx.strokeStyle='#'+L[6].toString(16).padStart(6,'0'); ctx.lineWidth=L[7]; ctx.lineCap='round';
+          ctx.beginPath(); ctx.moveTo(A[0],A[1]); ctx.lineTo(B[0],B[1]); ctx.stroke(); ctx.restore(); } });
       else if(t&&t._shuttle)drawDemoCar(t);                                                     // self-layers: trunks under 'vehicles', cargo under 'products'
       else if(t&&t._load)drawPallet(t,vlod);
       else if(t){ const car=flow?flow.cars.find(c=>c.v===t):null;
@@ -1338,8 +1346,39 @@
       flow.a2.forEach(c=>tag(c.eLane.sx,c.eLane.sy+0.9,CAT_LABEL[c.flowCat],'#6b21a8'));
       ctx.restore(); }}
 
+  let rackRuns3D=[];   // pallet-rack structures (blue uprights + braces + orange beams) from the Configurator
+  // Build all 3D rack members for the depth sort: Dexion-blue uprights, orange beams (per bay/level), horizontal + diagonal braces.
+  function rackParts(){ const out=[]; if(!rackRuns3D||!rackRuns3D.length)return out;
+    const BLUE=0x0a3aa6, ORANGE=0xf26522, BRACE=0x12317a;
+    const zoff=(((meta&&meta.site&&meta.site.floorToBeltOffset)||310)-200)*MM;   // the Configurator bakes FBO-200 into the IDBM base Z — beams must match it
+    rackRuns3D.forEach(R=>{ const cw=(R.colW||76)*MM,
+      beamLen=R.beamLen*MM, pitch=(R.beamLen+(R.colW||76))*MM, lp=(R.lp||1200)*MM,
+      levels=R.levels||1, frameSets=R.frameSets||2, bays=R.bays||1, beamH=(R.beamH||130)*MM,
+      d=(R.depth||1067)*MM,                              // FRAME DEPTH = separation of the TWO columns of one frame assembly
+      cH=cw/2, beamThk=0.05;
+      const ang=R.ang||0, ax=[Math.cos(ang),Math.sin(ang)], ay=[-Math.sin(ang),Math.cos(ang)], ox=R.x0*MM, oy=R.y0*MM;   // run LOCAL axes → world
+      const T=(lx,ly)=>[ox+ax[0]*lx+ay[0]*ly, oy+ax[1]*lx+ay[1]*ly];
+      // LOCAL frame-assembly centres; OUTER beams at 420 / 5580 (320 housing + 100 clearance), end frames inset by d/2
+      const c0=420*MM+d/2, cN=(6000-420)*MM-d/2, fc=[];
+      for(let i=0;i<frameSets;i++){ fc.push(frameSets===1?(c0+cN)/2:c0+(i/(frameSets-1))*(cN-c0)); }
+      const lineXs=[]; fc.forEach(c=>{ lineXs.push(c-d/2); lineXs.push(c+d/2); });   // each frame → two column/beam lines
+      const colYs=[]; for(let k=0;k<=bays;k++) colYs.push(k*pitch+cw/2);
+      const beamTopOff=zoff+(E_TOP-0.085);                                                                                 // beam TOP = 85 mm below the IDBM top surface (cz+E_TOP) → the body bottom it rests on
+      const topBeam=(levels-1)*lp+beamTopOff, top=topBeam+0.45;
+      lineXs.forEach(bx=> colYs.forEach(cy=>{ const w=T(bx,cy); out.push({kind:'col',k:[w[0],w[1],top*0.5], box:[w[0],w[1],0,top,ax,ay,cH,cH,BLUE]}); }) );   // UPRIGHTS — floor → top
+      for(let lv=0;lv<levels;lv++){ const zt=lv*lp+beamTopOff, zb=Math.max(0,zt-beamH);                                     // BEAMS along local +Y — top defined by the IDBM top surface
+        for(let b=0;b<bays;b++){ const yc=b*pitch+cw+beamLen/2;
+          lineXs.forEach(bx=>{ const w=T(bx,yc); out.push({kind:'beam',k:[w[0],w[1],zt], box:[w[0],w[1],zb,zt,ay,ax,beamLen/2,beamThk/2,ORANGE]}); }); } }
+      colYs.forEach(cy=>{ fc.forEach(c=>{ const A=T(c-d/2,cy), B=T(c+d/2,cy), M=T(c,cy);                                    // BRACING — between the two columns of EACH frame (across the frame depth)
+        const nP=Math.max(2,Math.round(top/1.1)), panel=top/nP;
+        for(let p=0;p<=nP;p++){ const z=p*panel; out.push({kind:'brace',k:[M[0],M[1],z], line:[A[0],A[1],z,B[0],B[1],z,BRACE,3]}); }    // horizontal rungs
+        for(let p=0;p<nP;p++){ const z1=p*panel,z2=(p+1)*panel,e=(p%2===0)?[A,z1,B,z2]:[B,z1,A,z2];                       // diagonal zigzag
+          out.push({kind:'brace',k:[M[0],M[1],(z1+z2)/2], line:[e[0][0],e[0][1],e[1],e[2][0],e[2][1],e[3],BRACE,3]}); } }); });
+    });
+    return out; }
   function loadData(d){
-    meta=d; idbms=(d.instances||[]).map(I=>{const A=I.datum.endA,B=I.datum.endB;
+    meta=d; rackRuns3D=(d&&d.rackRuns)||[];
+    idbms=(d.instances||[]).map(I=>{const A=I.datum.endA,B=I.datum.endB;
       const ax=A[0]*MM,ay=A[1]*MM,bx=B[0]*MM,by=B[1]*MM;
       return {cx:(ax+bx)/2,cy:(ay+by)/2,cz:A[2]*MM,L:Math.hypot(bx-ax,by-ay),
               W:(I.params.width||300)*MM,H:(I.params.height||170)*MM,h:Math.atan2(by-ay,bx-ax),lane:I.laneId};});

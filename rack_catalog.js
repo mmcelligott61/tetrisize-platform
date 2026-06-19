@@ -35,11 +35,13 @@
     },
 
     // ---- 3 FRAME TYPES (finish drives environment + load class) ----
+    // colWidthY = upright width in the BEAM direction (the gap consumed between bays)
     frameTypes: [
-      { key: 'light', label: 'Light duty — powder-coated', column_mm: '76 × 41', finish: 'powder',     use: 'Standard indoor storage' },
-      { key: 'heavy', label: 'Heavy duty — powder-coated', column_mm: '76 × 76', finish: 'powder',     use: 'Higher-load indoor storage' },
-      { key: 'galv',  label: 'Galvanised',                 column_mm: 'varies',  finish: 'galvanised', use: 'Outdoor / humid / freezer / cooler / chemical' }
+      { key: 'light', label: 'Light duty — powder-coated', column_mm: '76 × 41', colWidthY: 76, finish: 'powder',     use: 'Standard indoor storage' },
+      { key: 'heavy', label: 'Heavy duty — powder-coated', column_mm: '76 × 76', colWidthY: 76, finish: 'powder',     use: 'Higher-load indoor storage' },
+      { key: 'galv',  label: 'Galvanised',                 column_mm: '90 × 70', colWidthY: 90, finish: 'galvanised', use: 'Outdoor / humid / freezer / cooler / chemical' }
     ],
+    colWidthY: function (frameKey) { var f = (this.frameTypes || []).find(function (t) { return t.key === frameKey; }); return (f && f.colWidthY) || 76; },
 
     // ---- FRAME DEPTHS (mm) + the practical depth rule ----
     depths_mm: [610, 914, 1067, 1219],
