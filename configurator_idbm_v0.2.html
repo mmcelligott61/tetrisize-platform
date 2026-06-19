@@ -72,6 +72,7 @@
     <span class="sep"></span>
     <div class="grp"><span class="gl">Vehicle</span><button class="ui" id="addCrane">+ Crane</button><button class="ui" id="addShuttle">+ Shuttle</button><button class="ui" id="addAgv">+ AGV</button></div>
     <div class="grp"><span class="gl">Structure</span><button class="ui" id="addRack">+ Rack</button><button class="ui" id="addMezz">+ Mezzanine</button><button class="ui" id="addObstacle">+ Obstacle</button><button class="ui" id="addZone">+ Zone</button></div>
+    <div class="grp"><span class="gl">Flow</span><button class="ui" id="setEntry" title="Click, then click the canvas to place where product ENTERS the layout">⚑ Entry</button><button class="ui" id="setExit" title="Click, then click the canvas to place where product EXITS the layout">⚑ Exit</button></div>
     <span class="sep"></span>
     <div class="grp"><button class="ui" id="del">Delete</button><button class="ui" id="bomB" title="Bill of materials / quote — counts IDBMs &amp; frame-feet by mount">▤ BOM</button><button class="ui" id="ld">⤒ Load</button><button class="ui" id="exp">⤓ Export</button><button class="ui" id="runV" title="Export straight into the live Viewer — no file step" style="font-weight:800">▶ Run in Viewer</button><button class="ui" id="paraB" title="Parametric quick-build: whole facility from a dozen numbers, with validation" onclick="location.href='configurator_idbm_v0.3.html'">⚙ Parametric</button><input id="ldFile" type="file" accept="application/json,.json" style="display:none"></div>
   </div>
@@ -134,6 +135,7 @@
   let idbms=[], nextId=1, nextLane=1, activeZ=0, rackRuns=[];   // rackRuns: placed pallet-rack structures (blue columns + orange beams) the IDBMs rest on
   const DEXION_BLUE='#0a3aa6', DEXION_ORANGE='#f26522';
   let vehicles=[], nextVeh=1, selVeh=null;   // vehicles (crane/shuttle/agv) = IDBM arrays on a moving mount
+  let flowEntry=null, flowExit=null, placeMode=null;   // directed-flow markers: where product ENTERS / EXITS the layout (world [x,y]); placeMode = next canvas click sets one
   let routeMode=false,routeVeh=null;   // AGV polyline route authoring (click to add waypoints)
   let snapLines=[],snapActive=-1;      // MD insertion lines: open IDBM ends facing each other across a gap
   const sel=new Set();
@@ -390,7 +392,13 @@
     if(selVeh!=null){const sv=vehicles.find(x=>x.id===selVeh);if(sv)drawHandles(sv);}
     if(marquee){ctx.strokeStyle='#2b6cff';ctx.fillStyle='rgba(43,108,255,0.08)';ctx.lineWidth=1;ctx.setLineDash([5,4]);
       const x=Math.min(marquee.x0,marquee.x1),y=Math.min(marquee.y0,marquee.y1),w=Math.abs(marquee.x1-marquee.x0),h=Math.abs(marquee.y1-marquee.y0);
-      ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);ctx.setLineDash([]);}}
+      ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);ctx.setLineDash([]);}
+    const drawFlag=(pt,lab,col)=>{ if(!pt)return; const s=w2s(pt[0],pt[1]); ctx.save();   // directed-flow Entry/Exit markers
+      ctx.strokeStyle=col;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(s[0],s[1]);ctx.lineTo(s[0],s[1]-24);ctx.stroke();        // pole
+      ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(s[0],s[1]-24);ctx.lineTo(s[0]+17,s[1]-20);ctx.lineTo(s[0],s[1]-15);ctx.closePath();ctx.fill();  // pennant
+      ctx.beginPath();ctx.arc(s[0],s[1],4,0,6.283);ctx.fill();                                                               // base dot
+      ctx.font='700 10px system-ui';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(lab,s[0]+21,s[1]-19);ctx.restore(); };
+    drawFlag(flowEntry,'ENTRY','#15803d'); drawFlag(flowExit,'EXIT','#b91c1c'); }
 
   function hitActive(wx,wy){for(let i=idbms.length-1;i>=0;i--){const d=idbms[i];if(d.z!==activeZ)continue;
     const u=dir(d.ang),p=[-u[1],u[0]],dx=wx-d.cx,dy=wy-d.cy,lx=dx*u[0]+dy*u[1],ly=dx*p[0]+dy*p[1];
@@ -410,6 +418,7 @@
   cv.addEventListener('contextmenu',e=>e.preventDefault());
   cv.addEventListener('pointerdown',e=>{try{cv.setPointerCapture(e.pointerId);}catch(_){}
     const r=localXY(),sx=e.clientX-r.left,sy=e.clientY-r.top,[wx,wy]=s2w(sx,sy);
+    if(placeMode&&e.button===0){ if(placeMode==='entry')flowEntry=[wx,wy]; else flowExit=[wx,wy]; const pm=placeMode; placeMode=null; toast(pm.toUpperCase()+' point set — runs from Entry → Exit in the Viewer'); render(); refresh(); return; }
     if(routeMode&&routeVeh&&e.button===0){routeVeh.route=routeVeh.route||[];routeVeh.route.push([wx,wy]);render();refresh();return;}
     const hh=(e.button===2)?null:hitHandle(sx,sy);
     let vh=(e.button===2||hh)?null:hitVehicle(wx,wy);
@@ -516,7 +525,7 @@
     const objs=vehicles.filter(v=>!isVeh(v.type)).map(v=>({instanceId:`${v.type.toUpperCase()}-${String(v.id).padStart(3,'0')}`,typeRef:v.type,category:(VREG[v.type]||{}).category,
       pose:{position:[r(v.cx),r(v.cy),0],yaw:v.yaw},params:v.params,coordSource:{mode:"design",timestamp:new Date().toISOString()}}));
     return {schema:"tetrisize.platform/v0.3",site:{siteId:"site-1",units:"mm",up:"Z",handedness:"right",origin:{x:0,y:0,z:0},floorToBeltOffset:FBO},
-      levels:[...new Set(idbms.map(d=>d.z))].sort((a,b)=>a-b).map(z=>({levelId:`Z${z}`,baseZ:z})),instances:inst,lanes,vehicles:veh,objects:objs,rackRuns:rackRuns,markings:genMarkings(),exportedAt:new Date().toISOString()};}
+      levels:[...new Set(idbms.map(d=>d.z))].sort((a,b)=>a-b).map(z=>({levelId:`Z${z}`,baseZ:z})),instances:inst,lanes,vehicles:veh,objects:objs,rackRuns:rackRuns,flowPoints:{entry:flowEntry,exit:flowExit},markings:genMarkings(),exportedAt:new Date().toISOString()};}
   function exportJSON(){const doc=buildDoc();if(!doc)return;
     const blob=new Blob([JSON.stringify(doc,null,2)],{type:"application/json"});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download="idbm_layout.json";a.click();URL.revokeObjectURL(a.href);
     toast(`Exported ${doc.instances.length} IDBMs · ${doc.lanes.length} lanes · ${doc.vehicles.length} vehicles · ${doc.objects.length} objects`);}
@@ -530,6 +539,8 @@
   $('add').onclick=addIdbm;$('rot').onclick=rotate;$('setlen').onclick=setLen;$('arr').onclick=arrayBuild;
   $('bomB').onclick=()=>{ const p=$('bomPanel'); p.style.display=(p.style.display==='block'?'none':'block'); if(p.style.display==='block'){ renderBOM(); if(window.TZ_UI&&TZ_UI.dragify&&!p.__drg){TZ_UI.dragify(p,p.querySelector('.lbl'));p.__drg=1;} } };
   $('dup').onclick=duplicate;$('del').onclick=del;$('cpz').onclick=copyToZ;$('exp').onclick=exportJSON;$('runV').onclick=runInViewer;$('addCrane').onclick=()=>addVehicle('crane');$('addShuttle').onclick=()=>addVehicle('shuttle');$('addAgv').onclick=()=>addVehicle('agv');$('addRack').onclick=()=>addVehicle('rack');$('addMezz').onclick=()=>addVehicle('mezzanine');$('addObstacle').onclick=()=>addVehicle('obstacle');$('addZone').onclick=()=>addVehicle('zone');$('fboIn').onchange=()=>{if((parseFloat($('fboIn').value)||0)<210)$('fboIn').value=210;};
+  $('setEntry').onclick=()=>{placeMode='entry';toast('Click on the layout to place the ENTRY point');};
+  $('setExit').onclick=()=>{placeMode='exit';toast('Click on the layout to place the EXIT point');};
   // place a multi-bay rack RUN: bays side-by-side (shared frames), max IDBMs per bay centred equidistant, on every level.
   // IDBMs are real units (counted) tagged with mount + frame-foot type for pricing.
   window.__rkPlaceRun=function(spec){ spec=spec||window.__rkSpec; if(!spec||!spec.st)return 0; const st=spec.st;
@@ -759,14 +770,15 @@
   let _wipT;
   function saveWip(){ clearTimeout(_wipT); _wipT=setTimeout(function(){ try{ localStorage.setItem('tz-cfg-wip', JSON.stringify({
     idbms:idbms, vehicles:vehicles, rackRuns:rackRuns, nextId:nextId, nextLane:nextLane, nextVeh:nextVeh, activeZ:activeZ,
-    fbo:($('fboIn')&&$('fboIn').value)||310, ts:Date.now() })); }catch(e){} }, 400); }
+    flowEntry:flowEntry, flowExit:flowExit, fbo:($('fboIn')&&$('fboIn').value)||310, ts:Date.now() })); }catch(e){} }, 400); }
   function restoreWip(){ try{ const w=JSON.parse(localStorage.getItem('tz-cfg-wip')||'null'); if(!w||!Array.isArray(w.idbms)||!w.idbms.length)return false;
     const vs=Array.isArray(w.vehicles)?w.vehicles:[];
     idbms=w.idbms; vehicles=vs; rackRuns=Array.isArray(w.rackRuns)?w.rackRuns:[]; nextLane=w.nextLane||1; activeZ=w.activeZ||0;
     nextId=w.nextId||(w.idbms.reduce(function(m,d){return Math.max(m,d.id||0);},0)+1);
     nextVeh=w.nextVeh||(vs.reduce(function(m,v){return Math.max(m,v.id||0);},0)+1);
+    flowEntry=Array.isArray(w.flowEntry)?w.flowEntry:null; flowExit=Array.isArray(w.flowExit)?w.flowExit:null;
     if(w.fbo&&$('fboIn'))$('fboIn').value=w.fbo; sel.clear(); selVeh=null; return true; }catch(e){ idbms=[]; vehicles=[]; return false; } }
-  window.__cfgNew=function(){ localStorage.removeItem('tz-cfg-wip'); idbms=[]; vehicles=[]; rackRuns=[]; nextId=1; nextLane=1; nextVeh=1; activeZ=0; sel.clear(); selVeh=null; addIdbm(); render(); refresh(); return 'new layout'; };
+  window.__cfgNew=function(){ localStorage.removeItem('tz-cfg-wip'); idbms=[]; vehicles=[]; rackRuns=[]; nextId=1; nextLane=1; nextVeh=1; activeZ=0; flowEntry=null; flowExit=null; placeMode=null; sel.clear(); selVeh=null; addIdbm(); render(); refresh(); return 'new layout'; };
   if(!restoreWip()){                                                                   // priority: native autosave → last layout sent to the Viewer → fresh single IDBM
     let seeded=false; idbms=[]; vehicles=[];                                            // clean slate before importing, so a failed restore can never append-double
     try{ const tl=JSON.parse(localStorage.getItem('tz-layout')||'null');

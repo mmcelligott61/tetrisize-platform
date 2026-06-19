@@ -1234,6 +1234,7 @@
     if(vst==='hidden'){ palls(); return; }
     withLayer('vehicles',()=>drawCarParts(s.inst,lod,palls)); }
   let dragging=false,zT,playing=false,animClock=0,lastT=0,showLabels=false,lastBounds=null,climateOn=false,autoFlow=true,conceptOn=false,conceptLanes=null,conceptPallets=null;
+  let flowEntryV=null,flowExitV=null,directedData=null,directedPallets=null,flowThru=0;   // directed flow: Entry/Exit points (metres), linked product data, in-flight pallets, throughput count
   window.__labels=v=>{showLabels=!!v;render();return showLabels;};
   const LYR=()=>(window.TZ_UI?TZ_UI.layers:null);
   function withLayer(cls,fn){ const L=LYR(), s=L?L[cls]:'visible'; if(s==='hidden')return;   // scene-layer visibility: show / ghost / hide per class (Mike's floating-inventory demo effect)
@@ -1378,6 +1379,8 @@
     return out; }
   function loadData(d){
     meta=d; rackRuns3D=(d&&d.rackRuns)||[];
+    flowEntryV=(d&&d.flowPoints&&Array.isArray(d.flowPoints.entry))?[d.flowPoints.entry[0]*MM,d.flowPoints.entry[1]*MM]:null;   // directed-flow Entry/Exit (mm → m)
+    flowExitV =(d&&d.flowPoints&&Array.isArray(d.flowPoints.exit)) ?[d.flowPoints.exit[0]*MM, d.flowPoints.exit[1]*MM] :null;
     idbms=(d.instances||[]).map(I=>{const A=I.datum.endA,B=I.datum.endB;
       const ax=A[0]*MM,ay=A[1]*MM,bx=B[0]*MM,by=B[1]*MM;
       return {cx:(ax+bx)/2,cy:(ay+by)/2,cz:A[2]*MM,L:Math.hypot(bx-ax,by-ay),
@@ -1564,7 +1567,7 @@
       loadCtx(c); eCtxI=i; if(eLane){ stepEngine(dt); syncEngineLoads(); c.shuttles=eShuttleDefs().map(s=>{s._ctx=i;return s;}); } saveCtx(c); });   // …then EVERY pallet car's lane advances
     renderLoads=staticLoads.concat([].concat(...eCtxs.map(c=>c.loads||[]))); renderShuttles=[].concat(...eCtxs.map(c=>c.shuttles||[]));
     if(conceptOn)stepConcept(dt); }                                                              // CONCEPT FLOW (custom-layout diagnostic) overrides renderLoads with lengthwise-conveyed pallets
-  setInterval(function(){ if(!playing||!eCtxs.length)return; const t=(window.performance&&performance.now)?performance.now():+new Date(); if(t-lastRaf>200){ const dt=Math.min((t-(lastT||t))/1000,0.05); lastT=t; animClock+=dt; eStepAll(dt); render(); } }, 100);
+  setInterval(function(){ if(!playing||(!eCtxs.length&&!conceptOn))return; const t=(window.performance&&performance.now)?performance.now():+new Date(); if(t-lastRaf>200){ const dt=Math.min((t-(lastT||t))/1000,0.05); lastT=t; animClock+=dt; eStepAll(dt); render(); } }, 100);   // also keep CONCEPT/DIRECTED flow stepping when rAF is throttled (custom layouts have no eCtxs)
   function setMode(p){cam.persp=p;cam.panX=cam.panY=0;if(p){fitView();}else if(meta.instances)loadData(meta);render();}   // entering perspective fits immediately (fit() is mode-aware)
   {const qb=document.getElementById('perspBtn');if(qb)qb.onclick=()=>{setMode(!cam.persp);qb.textContent=cam.persp?'Orthographic':'Perspective';};}
   window.__step=(n,dt)=>{n=n||1;dt=dt||0.05;for(var i=0;i<n;i++)vehicles.forEach(v=>{if(v.type==='agv'&&v.track&&v.track.length)followTrack(v,dt);});render();
@@ -2222,22 +2225,47 @@
         i=j; }
     });
     return lanes; }
-  function startConcept(){ if(!idbms.length)return '0 pallets'; conceptLanes=buildConceptLanes(); conceptPallets=[];
-    const PITCH=1.8; conceptLanes.forEach((ln,li)=>{ const n=Math.max(1,Math.floor(ln.len/PITCH));
-      for(let i=0;i<n;i++)conceptPallets.push({lane:li,d:i*PITCH+(li%2)*0.7}); });                  // stagger alternate lanes so motion reads clearly
-    conceptOn=true; if(!playing){ playing=true; lastT=0; const pb=document.getElementById('playBtn'); if(pb)pb.textContent='⏸ Pause'; requestAnimationFrame(animate); }
-    return conceptPallets.length+' pallets on '+conceptLanes.length+' lane(s)'; }
-  function stopConcept(){ conceptOn=false; conceptPallets=null; renderLoads=[]; playing=false;
+  // ---- link sample product data for directed flow (no Brain needed) ----
+  function _flowScript(src,cb){ if(window['_fl_'+src]){cb();return;} const s=document.createElement('script'); s.src=src; s.onload=()=>{window['_fl_'+src]=1;cb();}; s.onerror=()=>brainLog('Could not load '+src,'warn'); document.head.appendChild(s); }
+  window.__flowData=function(name){
+    const set=items=>{ directedData={items:items,idx:0}; brainLog('🔗 FLOW DATA linked — '+items.length+' products ('+name+')','plan'); };
+    if(!name||name==='none'){ directedData=null; return 'flow data cleared'; }
+    if(name==='rich'){ window.TZ_RICH?set(window.TZ_RICH(600).items):_flowScript('rich_catalog.js',()=>window.TZ_RICH&&set(window.TZ_RICH(600).items)); return 'linking rich'; }
+    const k='TZ_SCENARIO_'+name; window[k]?set(window[k].items):_flowScript('scenario_'+name+'.js',()=>window[k]&&set(window[k].items)); return 'linking '+name; };
+  function _nextItem(){ if(!directedData||!directedData.items.length)return null; const it=directedData.items[directedData.idx%directedData.items.length]; directedData.idx++; return it; }
+  function _thruBox(show){ let tb=document.getElementById('flowThruBox'); if(!tb){ tb=document.createElement('div'); tb.id='flowThruBox';
+      tb.style.cssText='position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:30;background:rgba(16,22,32,.9);color:#dbeafe;padding:6px 15px;border-radius:20px;font:600 12px system-ui;box-shadow:0 2px 10px rgba(0,0,0,.25)'; document.body.appendChild(tb); }
+    tb.style.display=show?'block':'none'; if(show)tb.innerHTML='▶ DIRECTED FLOW &nbsp;·&nbsp; Entry → Exit &nbsp;·&nbsp; throughput <b id="flowThru" style="color:#7dd3fc">0</b>'; }
+  function startConcept(){ if(!idbms.length)return '0 pallets'; conceptLanes=buildConceptLanes();
+    if(flowEntryV&&flowExitV){                                                                    // DIRECTED FLOW: products enter at Entry, convey to Exit, leave
+      conceptLanes.forEach(ln=>{ const toExit=(flowExitV[0]-flowEntryV[0])*ln.ux+(flowExitV[1]-flowEntryV[1])*ln.uy;
+        if(toExit<0){ ln.sx+=ln.ux*ln.len; ln.sy+=ln.uy*ln.len; ln.ux=-ln.ux; ln.uy=-ln.uy; } });               // orient every lane toward the Exit
+      directedPallets=[]; flowThru=0; conceptOn='directed'; if(!directedData)window.__flowData('rich');           // default to the synthetic catalogue so products look real; switch with __flowData('100'/'1000')
+      _thruBox(true);
+      if(!playing){ playing=true; lastT=0; const pb=document.getElementById('playBtn'); if(pb)pb.textContent='⏸ Pause'; requestAnimationFrame(animate); }
+      return conceptLanes.length+' lanes · Entry→Exit'+(directedData?(' · '+directedData.items.length+' linked products'):' · linking product data…'); }
+    const PITCH=1.8; conceptPallets=[]; conceptLanes.forEach((ln,li)=>{ const n=Math.max(1,Math.floor(ln.len/PITCH));   // LOOP fallback (no Entry/Exit set)
+      for(let i=0;i<n;i++)conceptPallets.push({lane:li,d:i*PITCH+(li%2)*0.7}); });
+    conceptOn='loop'; _thruBox(false); if(!playing){ playing=true; lastT=0; const pb=document.getElementById('playBtn'); if(pb)pb.textContent='⏸ Pause'; requestAnimationFrame(animate); }
+    return conceptPallets.length+' pallets looping — set Entry/Exit in the Configurator for directed flow'; }
+  function stopConcept(){ conceptOn=false; conceptPallets=null; directedPallets=null; renderLoads=[]; playing=false; _thruBox(false);
     const pb=document.getElementById('playBtn'); if(pb)pb.textContent='▶ Play'; render(); }
-  function stepConcept(dt){ if(!conceptOn||!conceptLanes)return; const SP=1.4*((window.TZ_UI&&TZ_UI.speed)||10)*dt, out=[];
+  function stepConcept(dt){ if(!conceptOn||!conceptLanes)return; const speed=((window.TZ_UI&&TZ_UI.speed)||10), SP=1.4*speed*dt, out=[];
+    if(conceptOn==='directed'){ const PITCH=2.2;
+      conceptLanes.forEach(ln=>{ if(!directedPallets.some(p=>p.lane===ln && p.d<PITCH))directedPallets.push({lane:ln,d:0,item:_nextItem()}); });   // spawn at the Entry end when its slot is clear
+      directedPallets=directedPallets.filter(p=>{ p.d+=SP; if(p.d>=p.lane.len){ flowThru++; return false; }                                       // reached Exit → removed + counted
+        const ln=p.lane,it=p.item,L=(it&&it.len?it.len/1000:1.165),W=Math.min(ln.w||1.165,(it&&it.wid?it.wid/1000:1.165));
+        out.push({_load:1,x:ln.sx+ln.ux*p.d,y:ln.sy+ln.uy*p.d,cz:ln.cz,ang:Math.atan2(ln.uy,ln.ux),L:L,W:W,H:1.0,identity:it?{prod:(it.payload&&it.payload.case_description)||null,len:it.len,wid:it.wid}:null}); return true; });
+      renderLoads=out; const ft=document.getElementById('flowThru'); if(ft)ft.textContent=flowThru; return; }
     conceptPallets.forEach(p=>{ const ln=conceptLanes[p.lane]; if(!ln)return; p.d+=SP; if(p.d>ln.len)p.d-=ln.len;
-      out.push({_load:1, x:ln.sx+ln.ux*p.d, y:ln.sy+ln.uy*p.d, cz:ln.cz, ang:ln.h, L:1.165, W:ln.w||1.165, H:1.0}); });   // _load flags it for drawPallet; W = bundle width (no cross-lane overlap)
+      out.push({_load:1,x:ln.sx+ln.ux*p.d,y:ln.sy+ln.uy*p.d,cz:ln.cz,ang:ln.h,L:1.165,W:ln.w||1.165,H:1.0}); });
     renderLoads=out; }
   window.__flow=function(on){ if(autoFlow)return 'this is the demo facility — it already runs the full Brain. Test Flow is for custom Configurator layouts.';
     if(on===false||(on==null&&conceptOn)){ stopConcept(); return 'flow OFF — static snapshot'; }
-    return 'flow ON — '+startConcept()+' conveying lengthwise'; };
+    return 'flow ON — '+startConcept(); };
+  window.__flowStats=function(){ return {mode:conceptOn||'off', throughput:flowThru, lanes:conceptLanes?conceptLanes.length:0, dataLinked:directedData?directedData.items.length:0, entry:!!flowEntryV, exit:!!flowExitV}; };
   { const fb=document.getElementById('flowBtn'); if(fb)fb.onclick=()=>{ const msg=window.__flow();
-      fb.classList.toggle('on',conceptOn); fb.textContent=conceptOn?'⏸ Stop Flow':'▶ Test Flow'; brainLog('🧪 '+msg,'plan'); }; }
+      fb.classList.toggle('on',!!conceptOn); fb.textContent=conceptOn?'⏸ Stop Flow':'▶ Test Flow'; brainLog('🧪 '+msg,'plan'); }; }
   window.__layoutReset=function(){ localStorage.removeItem('tz-layout'); return 'tz-layout cleared — reload for the built-in layout'; };
   if(bootData){ try{ loadData(bootData); }catch(err){ window.__bootErr=err.message+'\n'+(err.stack||'').split('\n')[1];
       const b=document.getElementById('boot'); b.style.display='flex'; b.innerHTML='<div>Layout failed to load: '+err.message+'</div>'; }
