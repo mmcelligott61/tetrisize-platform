@@ -58,8 +58,6 @@
 <div id="app">
   <canvas id="scene"></canvas>
 
-  <div class="panel" id="title"><h1>TETRISIZE <b>IDBM Configurator</b></h1>
-    <p>v0.2 · array · duplicate+gap · marquee · Z-levels. Exports v0.2 schema.</p></div>
 
   <div class="panel" id="bar">
     <div class="grp"><button class="ui primary" id="add">+ IDBM</button><button class="ui" id="rot">Rotate</button></div>
@@ -565,6 +563,8 @@
     if(!seeded)addIdbm();
   }
   render();refresh();
+  // overlay panels are draggable so they don't block the canvas (grab a non-control area to move)
+  if(window.TZ_UI&&TZ_UI.dragify){ ['levels','props'].forEach(id=>{ const p=document.getElementById(id); if(p)TZ_UI.dragify(p); }); }
 })();
 </script>
 </body>

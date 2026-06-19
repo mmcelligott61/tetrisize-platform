@@ -40,6 +40,33 @@
 
   function el(html){ const t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
 
+  // ---- shared: make any overlay panel draggable (grab a non-control area) + add a × close ----
+  UI.dragify = function(panel, handle){
+    if(!panel || panel._tzDrag) return; panel._tzDrag = true;
+    handle = handle || panel; handle.style.cursor = 'move';
+    let on=false, sx=0, sy=0, ox=0, oy=0;
+    handle.addEventListener('pointerdown', e=>{
+      if(e.button!==0) return;
+      if(e.target.closest('button,input,select,textarea,a,[data-cls],[data-s],[data-c],[data-g],.lensval,.lensfacet,.scenbtn,.lensmode')) return;  // never start a drag on a control
+      on=true; sx=e.clientX; sy=e.clientY; const r=panel.getBoundingClientRect(); ox=r.left; oy=r.top;
+      panel.style.position='fixed'; panel.style.left=ox+'px'; panel.style.top=oy+'px'; panel.style.right='auto'; panel.style.bottom='auto'; panel.style.margin='0';
+      try{ handle.setPointerCapture(e.pointerId); }catch(_){}
+    });
+    handle.addEventListener('pointermove', e=>{ if(!on) return; const dx=e.clientX-sx, dy=e.clientY-sy;
+      if(Math.abs(dx)+Math.abs(dy)>3) panel._tzMoved=Date.now();
+      panel.style.left=Math.max(0,ox+dx)+'px'; panel.style.top=Math.max(0,oy+dy)+'px'; });
+    const end=e=>{ if(!on)return; on=false; try{ handle.releasePointerCapture(e.pointerId); }catch(_){} };
+    handle.addEventListener('pointerup', end); handle.addEventListener('pointercancel', end);
+  };
+  UI.addClose = function(panel, onClose){
+    if(!panel || panel.querySelector(':scope > .tz-x')) return;
+    if(getComputedStyle(panel).position==='static') panel.style.position='relative';
+    const x=el('<button class="tz-x" title="Close" aria-label="Close">×</button>');
+    x.style.cssText='position:absolute;top:5px;right:7px;border:none;background:transparent;color:var(--tz-muted,#8a94a3);font:16px/1 system-ui;cursor:pointer;padding:2px 5px;z-index:6';
+    x.onclick=ev=>{ ev.stopPropagation(); onClose ? onClose() : (panel.style.display='none'); };
+    panel.appendChild(x);
+  };
+
   function buildBar(){
     const tabs = TABS.map(t => t.soon
       ? `<span class="tz-tab soon" data-tab="${t.id}">${t.label}<span class="tz-pill">SOON</span></span>`
@@ -48,7 +75,7 @@
       ? `<div class="tz-speed"><label>SPEED</label><input id="tzSpeed" type="range" min="0" max="${SPEEDS.length-1}" step="1"
            value="${Math.max(0,SPEEDS.indexOf(UI.speed))}"><span class="tz-speedval" id="tzSpeedVal">${UI.speed}&times;</span></div>` : '';
     const bar = el(`<div id="tzBar">
-        <img class="tz-logo" id="tzLogo" alt="Tetrisize"><span class="tz-sub">PLATFORM</span>
+        <img class="tz-logo" id="tzLogo" alt="Tetrisize">
         <div class="tz-tabs">${tabs}</div>
         <div class="tz-right">${speed}
           ${SCREEN==='viewer' ? '<button class="tz-iconbtn" id="tzLayersBtn" title="Layer visibility">Layers</button>' : ''}
@@ -417,6 +444,7 @@
         <button class="tz-btn tz-preset" id="tzFloatPreset">Floating inventory</button>
         <button class="tz-btn tz-preset" id="tzAllPreset">Show everything</button></div>`);
     document.body.appendChild(p);
+    UI.dragify(p, p.querySelector('h4')); UI.addClose(p);   // drag by the "Scene layers" header; × closes (no need to re-click the Layers button)
     function setFloor(k,v){ UI.floor[k]=v; if(k==='color')LSset('tz-floor-color', v);   // only the colour persists — surface always boots to GRID
       p.querySelectorAll('#tzFloorSurf button').forEach(b=>b.classList.toggle('on', b.getAttribute('data-s')===UI.floor.surface));
       p.querySelectorAll('#tzFloorCol button').forEach(b=>b.classList.toggle('on', b.getAttribute('data-c')===UI.floor.color));

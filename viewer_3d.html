@@ -47,8 +47,6 @@
 <body>
 <div id="app">
   <canvas id="scene"></canvas>
-  <div class="panel" id="title"><h1>TETRISIZE <b>Viewer 3D</b></h1>
-    <p>Your configurator export running on the real <b>idbm_engine_lib.js</b> — motion, coupling and gaps emerge from the physics; nothing is scripted. Use the <b>ViewCube</b> (lower right) for exact views, <b>Layers</b> to ghost the scene, and <b>SPEED</b> for 1–50&times; time. Drag to orbit · scroll to zoom.</p></div>
   <div class="panel" id="info"><div class="lbl">Layout</div><div id="infoBody"></div></div>
   <div class="panel" id="ctl">
     <button class="ui on" data-mode="brain" onclick="window.__setMode&&window.__setMode('brain')">🧠 Brain</button>
@@ -1540,7 +1538,11 @@
   { const bp=document.getElementById('brain'), ch=document.getElementById('brainChev');         // the Brain panel compacts to header + latest lines; remembers the choice
     const setFold=f=>{ bp.classList.toggle('fold',f); ch.textContent=f?'▸':'▾'; try{localStorage.setItem('tz-brainfold',f?'1':'0');}catch(e){} };
     setFold((function(){ try{ return localStorage.getItem('tz-brainfold')!=='0'; }catch(e){ return true; } })());   // default COMPACT
-    document.getElementById('brainHdr').onclick=()=>setFold(!bp.classList.contains('fold')); }
+    const bh=document.getElementById('brainHdr');
+    bh.onclick=()=>{ if(bp._tzMoved&&Date.now()-bp._tzMoved<300)return; setFold(!bp.classList.contains('fold')); };   // a drag must not also toggle fold
+    if(window.TZ_UI&&TZ_UI.dragify)TZ_UI.dragify(bp, bh); }
+  // make the overlay popups draggable (they already carry their own × close)
+  if(window.TZ_UI&&TZ_UI.dragify){ ['lensPanel','sessPanel'].forEach(id=>{ const p=document.getElementById(id); if(p)TZ_UI.dragify(p, p.firstElementChild); }); }
   // ===== FLY-THROUGH (cinematic facility tour) + RECORD (the 3D canvas → .webm download) =====
   let flyT=-1, flyKeys=null;
   const _ease=u=>0.5-0.5*Math.cos(Math.PI*Math.max(0,Math.min(1,u)));
