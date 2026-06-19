@@ -73,7 +73,7 @@
     <div class="grp"><span class="gl">Vehicle</span><button class="ui" id="addCrane">+ Crane</button><button class="ui" id="addShuttle">+ Shuttle</button><button class="ui" id="addAgv">+ AGV</button></div>
     <div class="grp"><span class="gl">Structure</span><button class="ui" id="addRack">+ Rack</button><button class="ui" id="addMezz">+ Mezzanine</button><button class="ui" id="addObstacle">+ Obstacle</button><button class="ui" id="addZone">+ Zone</button></div>
     <span class="sep"></span>
-    <div class="grp"><button class="ui" id="del">Delete</button><button class="ui" id="ld">⤒ Load</button><button class="ui" id="exp">⤓ Export</button><button class="ui" id="runV" title="Export straight into the live Viewer — no file step" style="font-weight:800">▶ Run in Viewer</button><button class="ui" id="paraB" title="Parametric quick-build: whole facility from a dozen numbers, with validation" onclick="location.href='configurator_idbm_v0.3.html'">⚙ Parametric</button><input id="ldFile" type="file" accept="application/json,.json" style="display:none"></div>
+    <div class="grp"><button class="ui" id="del">Delete</button><button class="ui" id="bomB" title="Bill of materials / quote — counts IDBMs &amp; frame-feet by mount">▤ BOM</button><button class="ui" id="ld">⤒ Load</button><button class="ui" id="exp">⤓ Export</button><button class="ui" id="runV" title="Export straight into the live Viewer — no file step" style="font-weight:800">▶ Run in Viewer</button><button class="ui" id="paraB" title="Parametric quick-build: whole facility from a dozen numbers, with validation" onclick="location.href='configurator_idbm_v0.3.html'">⚙ Parametric</button><input id="ldFile" type="file" accept="application/json,.json" style="display:none"></div>
   </div>
 
   <div class="panel" id="levels">
@@ -86,6 +86,12 @@
 
   <div class="panel" id="props"><div class="lbl">Selection</div>
     <div id="propsBody"><div class="empty">Add an IDBM, set its length, then <b>Build</b> an array. Marquee-drag to select; <b>Copy sel → Z</b> stacks a shelf.</div></div></div>
+
+  <div class="panel" id="bomPanel" style="display:none;position:absolute;right:16px;top:300px;width:300px;padding:12px 14px;z-index:30">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span class="lbl" style="margin:0">▤ BOM / Quote</span>
+      <button class="ui" style="font-size:11px;padding:2px 7px" onclick="document.getElementById('bomPanel').style.display='none'">×</button></div>
+    <div id="bomBody" style="font-size:11px"></div></div>
 
   <div class="panel" id="rackPanel" style="display:none;position:absolute;right:16px;top:300px;width:300px;padding:12px 14px;z-index:30">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -102,8 +108,11 @@
     <div style="display:flex;gap:6px;margin-top:7px;align-items:center;font-size:11px">
       <span style="opacity:.7">Flow gap</span><input id="rkDupGap" class="ui" value="0" style="width:50px"><span style="opacity:.7">mm</span>
       <button class="ui" id="rkDup" style="flex:1;font-weight:700">Duplicate →</button></div>
-    <button class="ui" id="rkRot" style="width:100%;margin-top:6px;font-weight:700">Rotate run 90° ⟳</button>
-    <div id="rkDupHint" style="margin-top:5px;font-size:10px;opacity:.6">Duplicate clones the whole run (all levels, racking &amp; IDBMs) along the flow direction. Rotate turns the selected/last run.</div></div>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <button class="ui" id="rkRot" style="flex:1;font-weight:700">Rotate 90° ⟳</button>
+      <button class="ui" id="rkDel" style="flex:1;font-weight:700;color:#ff6b6b;border-color:#ff6b6b">Delete run ✕</button></div>
+    <button class="ui" id="rkClear" style="width:100%;margin-top:6px;font-size:11px;opacity:.85">Clear ALL racking</button>
+    <div id="rkDupHint" style="margin-top:5px;font-size:10px;opacity:.6">Acts on the run of the selected IDBM (else the last run). Duplicate/Rotate/Delete cover the whole run — every level + racking. Tip: click any upper-level IDBM to jump straight to its level.</div></div>
 
   <div class="panel" id="status"><span>IDBMs <b id="nIdbm">0</b></span><span>Lanes <b id="nLane">0</b></span><span>Active Z <b id="aZ">0</b></span><span>Selected <b id="nSel">0</b></span></div>
   <div class="panel" id="hint"><b>Drag</b> marquee-select · <b>Drag unit</b> move · <b>Right-drag</b> pan · <b>Scroll</b> zoom · <b>R</b> rotate · <b>Del</b> delete · <b>Alt-click</b> grab a mezzanine/zone</div>
@@ -386,6 +395,9 @@
   function hitActive(wx,wy){for(let i=idbms.length-1;i>=0;i--){const d=idbms[i];if(d.z!==activeZ)continue;
     const u=dir(d.ang),p=[-u[1],u[0]],dx=wx-d.cx,dy=wy-d.cy,lx=dx*u[0]+dy*u[1],ly=dx*p[0]+dy*p[1];
     if(Math.abs(lx)<=d.L/2&&Math.abs(ly)<=IDBM_W/2)return d;}return null;}
+  function hitAny(wx,wy){for(let i=idbms.length-1;i>=0;i--){const d=idbms[i];   // any level — used to jump to an upper-level IDBM (e.g. a rack shelf) just by clicking it
+    const u=dir(d.ang),p=[-u[1],u[0]],dx=wx-d.cx,dy=wy-d.cy,lx=dx*u[0]+dy*u[1],ly=dx*p[0]+dy*p[1];
+    if(Math.abs(lx)<=d.L/2&&Math.abs(ly)<=IDBM_W/2)return d;}return null;}
 
   function snap(d){d.cx=Math.round(d.cx/GRID)*GRID;d.cy=Math.round(d.cy/GRID)*GRID;
     if(sel.size!==1)return;const me=ends(d);let best=null,bd=SNAP;
@@ -413,7 +425,9 @@
     else if(hh){drag={mode:'travelHandle',end:hh.end,x:e.clientX,y:e.clientY};}
     else if(vh){selVeh=vh.id;sel.clear();drag={mode:'movevehicle',x:e.clientX,y:e.clientY,rx:vh.cx,ry:vh.cy,sx:vh.cx,sy:vh.cy,syaw:vh.yaw};refresh();}
     else if(h){selVeh=null;if(!e.shiftKey&&!sel.has(h.id))sel.clear();sel.add(h.id);drag={mode:'move',x:e.clientX,y:e.clientY};refresh();}
-    else{selVeh=null;if(!e.shiftKey)sel.clear();drag={mode:'marquee',x:e.clientX,y:e.clientY};marquee={x0:sx,y0:sy,x1:sx,y1:sy};refresh();}
+    else{ const ga=(e.button===0&&!vh)?hitAny(wx,wy):null;   // clicked an IDBM that lives on another level → jump to that level and grab it
+      if(ga){ activeZ=ga.z; selVeh=null; if(!e.shiftKey)sel.clear(); sel.add(ga.id); drag={mode:'move',x:e.clientX,y:e.clientY}; toast('Switched to Z = '+ga.z+' mm'); refresh(); }
+      else { selVeh=null;if(!e.shiftKey)sel.clear();drag={mode:'marquee',x:e.clientX,y:e.clientY};marquee={x0:sx,y0:sy,x1:sx,y1:sy};refresh(); } }
     render();
   });
   cv.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;
@@ -481,7 +495,8 @@
     const snapped=(comp.category==='vehicle')&&autoPlace(v);   // new MD jumps to the nearest insertion line, sized to the facing array, clear of others
     fitTravel(v);selVeh=v.id;sel.clear();
     toast(((comp.schemaType&&comp.schemaType.name)||type)+(snapped?' — snapped to nearest insertion line':' added — edit params at right'));refresh();render();}
-  function del(){if(selVeh!=null){vehicles=vehicles.filter(v=>v.id!==selVeh);selVeh=null;render();refresh();return;}idbms=idbms.filter(d=>!sel.has(d.id));sel.clear();render();refresh();}
+  function pruneRuns(){ const live=new Set(idbms.map(d=>d.laneId)); rackRuns=rackRuns.filter(R=>live.has(R.id)); }   // racking with no IDBMs left is removed too
+  function del(){if(selVeh!=null){vehicles=vehicles.filter(v=>v.id!==selVeh);selVeh=null;render();refresh();return;}idbms=idbms.filter(d=>!sel.has(d.id));sel.clear();pruneRuns();render();refresh();}
   function copyToZ(){if(sel.size<1){toast('Select units to copy to a new level');return;}const z=parseFloat($('zIn').value);if(isNaN(z))return;
     const items=idbms.filter(d=>sel.has(d.id)),created=[];
     items.forEach(it=>{idbms.push({id:nextId,cx:it.cx,cy:it.cy,z,ang:it.ang,L:it.L,laneId:it.laneId});created.push(nextId++);});
@@ -513,6 +528,7 @@
     setTimeout(()=>{location.href='viewer_3d.html?l='+Date.now();},450);}
 
   $('add').onclick=addIdbm;$('rot').onclick=rotate;$('setlen').onclick=setLen;$('arr').onclick=arrayBuild;
+  $('bomB').onclick=()=>{ const p=$('bomPanel'); p.style.display=(p.style.display==='block'?'none':'block'); if(p.style.display==='block'){ renderBOM(); if(window.TZ_UI&&TZ_UI.dragify&&!p.__drg){TZ_UI.dragify(p,p.querySelector('.lbl'));p.__drg=1;} } };
   $('dup').onclick=duplicate;$('del').onclick=del;$('cpz').onclick=copyToZ;$('exp').onclick=exportJSON;$('runV').onclick=runInViewer;$('addCrane').onclick=()=>addVehicle('crane');$('addShuttle').onclick=()=>addVehicle('shuttle');$('addAgv').onclick=()=>addVehicle('agv');$('addRack').onclick=()=>addVehicle('rack');$('addMezz').onclick=()=>addVehicle('mezzanine');$('addObstacle').onclick=()=>addVehicle('obstacle');$('addZone').onclick=()=>addVehicle('zone');$('fboIn').onchange=()=>{if((parseFloat($('fboIn').value)||0)<210)$('fboIn').value=210;};
   // place a multi-bay rack RUN: bays side-by-side (shared frames), max IDBMs per bay centred equidistant, on every level.
   // IDBMs are real units (counted) tagged with mount + frame-foot type for pricing.
@@ -569,6 +585,46 @@
     render(); refresh(); toast('Rotated run 90° (run '+runId+')');
     return 1; };
 
+  // Delete a whole rack run — every level + all racking — in one click; works on the selected IDBM's run, else the last run. No need to hop levels.
+  window.__rkDeleteRun=function(){
+    let runId=window.__lastRunId;
+    if(sel&&sel.size){ const d=idbms.find(x=>x.id===[...sel][0]); if(d&&d.laneId)runId=d.laneId; }
+    const R=rackRuns.find(r=>r.id===runId); if(!R){ toast('No rack run to delete — select one of its IDBMs first'); return 0; }
+    const n=idbms.filter(d=>d.laneId===runId).length;
+    idbms=idbms.filter(d=>d.laneId!==runId); rackRuns=rackRuns.filter(r=>r.id!==runId);
+    if(window.__lastRunId===runId)window.__lastRunId=(rackRuns.length?rackRuns[rackRuns.length-1].id:null);
+    sel.clear(); render(); refresh();
+    toast('Deleted rack run — '+n+' IDBMs + racking removed');
+    return n; };
+
+  // Clear EVERY rack run at once — all racking + all its IDBMs (leaves floor/vehicle IDBMs untouched).
+  window.__rkClearAll=function(){
+    if(!rackRuns.length){ toast('No racking to clear'); return 0; }
+    const ids=new Set(rackRuns.map(r=>r.id)), n=idbms.filter(d=>ids.has(d.laneId)).length, runs=rackRuns.length;
+    idbms=idbms.filter(d=>!ids.has(d.laneId)); rackRuns=[]; window.__lastRunId=null;
+    sel.clear(); render(); refresh();
+    toast('Cleared all racking — '+runs+' run(s), '+n+' IDBMs removed');
+    return n; };
+
+  // ---- BOM / quote takeoff: counts IDBMs and frame-feet by MOUNT (floor / rack / vehicle) + rack structure. Unit costs live only in localStorage, never the shared file. ----
+  function bomTakeoff(){ let floor=0,rack=0;
+    idbms.forEach(d=>{ if(d.mount==='rack')rack++; else floor++; });
+    let veh=0; vehicles.forEach(v=>{ const C=VREG[v.type]; if(C&&C.category==='vehicle'){ veh+=Math.max(0,parseInt(v.params&&v.params['bed.laneCount'])||0); } });
+    let frames=0,beams=0,cols=0; rackRuns.forEach(R=>{ const fs=R.frameSets||2, fr=(R.bays+1)*fs; frames+=fr; cols+=fr*2; beams+=fs*2*R.bays*(R.levels||1); });
+    return {floor,rack,veh,total:floor+rack+veh,footFloor:floor,footRack:rack,footVeh:veh,frames,beams,cols}; }
+  function bomPrices(){ try{return JSON.parse(localStorage.getItem('tz-cfg-prices'))||{};}catch(e){return {};} }
+  function bomSetPrice(k,v){ const p=bomPrices(); p[k]=parseFloat(v)||0; localStorage.setItem('tz-cfg-prices',JSON.stringify(p)); renderBOM(); }
+  function renderBOM(){ const el=$('bomBody'); if(!el)return; const t=bomTakeoff(), p=bomPrices(), money=n=>'$'+Math.round(n).toLocaleString();
+    const row=(label,qty,key)=>{ const u=p[key]||0, line=qty*u;
+      return `<tr><td style="padding:2px 0">${label}</td><td style="text-align:right">${qty}</td><td style="text-align:right">$<input data-k="${key}" class="bomp" value="${u||''}" placeholder="0" style="width:58px;text-align:right;font-size:11px"></td><td style="text-align:right">${line?money(line):'—'}</td></tr>`; };
+    const grand=(p.idbm||0)*t.total+(p.footFloor||0)*t.footFloor+(p.footRack||0)*t.footRack+(p.footVeh||0)*t.footVeh+(p.beam||0)*t.beams+(p.column||0)*t.cols;
+    el.innerHTML=`<div style="opacity:.75;margin-bottom:7px">IDBMs: <b>${t.floor}</b> floor · <b>${t.rack}</b> rack · <b>${t.veh}</b> vehicle = <b>${t.total}</b></div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="opacity:.55"><td>Part</td><td style="text-align:right">Qty</td><td style="text-align:right">Unit cost</td><td style="text-align:right">Line</td></tr>
+      ${row('IDBM unit',t.total,'idbm')}${row('Frame-foot · floor',t.footFloor,'footFloor')}${row('Frame-foot · rack',t.footRack,'footRack')}${row('Frame-foot · vehicle',t.footVeh,'footVeh')}${row('Rack beam (orange)',t.beams,'beam')}${row('Rack column (blue)',t.cols,'column')}
+      <tr style="border-top:1px solid var(--brd);font-weight:800"><td style="padding-top:4px">Total</td><td></td><td></td><td style="text-align:right;padding-top:4px">${grand?money(grand):'—'}</td></tr></table>
+      <div style="margin-top:7px;font-size:10px;opacity:.55">${t.frames} frame assemblies. Unit costs are saved only in this browser — never written to the shared/published file.</div>`;
+    el.querySelectorAll('.bomp').forEach(inp=>{ inp.onchange=()=>bomSetPrice(inp.getAttribute('data-k'),inp.value); inp.onkeydown=e=>{if(e.key==='Enter')inp.blur();}; }); }
+
   // ===== + RACK tool — customer pallet-rack selector (metric/imperial) with live load model =====
   (function(){ const C=window.TZ_RACKCAT, rows=document.getElementById('rkRows'); if(!C||!rows)return;
     const st={units:'metric',frame:'light',depth:1067,height:3658,beamLen:2438,beamH:130,levels:3,frameSets:2,bays:1};
@@ -613,6 +669,8 @@
       if(window.__rkPlaceRun){ window.__rkPlaceRun(Object.assign({},s,{ang:ang})); } else { toast('Rack configured · '+s.acrossN+' IDBMs/beam · '+s.calc.idbmLoadCap_kg+' kg/IDBM (placement next)'); } };
     const db=document.getElementById('rkDup'); if(db)db.onclick=()=>{ const g=document.getElementById('rkDupGap'); window.__rkDuplicate&&window.__rkDuplicate(g?g.value:0); };
     const rb=document.getElementById('rkRot'); if(rb)rb.onclick=()=>{ window.__rkRotateRun&&window.__rkRotateRun(); };
+    const xb=document.getElementById('rkDel'); if(xb)xb.onclick=()=>{ window.__rkDeleteRun&&window.__rkDeleteRun(); };
+    const cb=document.getElementById('rkClear'); if(cb)cb.onclick=()=>{ window.__rkClearAll&&window.__rkClearAll(); };
     if(window.TZ_UI&&TZ_UI.dragify)TZ_UI.dragify(document.getElementById('rackPanel'), document.querySelector('#rackPanel .lbl'));
   })();
   function loadFile(e){const f=e.target.files&&e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{toast(window.__cfgLoad(JSON.parse(rd.result)));}catch(err){toast('Bad JSON: '+err.message);}};rd.readAsText(f);e.target.value='';}
@@ -624,7 +682,9 @@
 
   function refresh(){refitAll();saveWip();
     if(!(drag&&drag.mode==='movevehicle')){computeSnaps();vehicles.forEach(v=>{const C=VREG[v.type];if(C&&C.category==='vehicle')v._collide=mdCollides(v);});}   // snap lines + collision flags depend only on IDBMs/other MDs — kept cached while dragging one vehicle
-    $('nIdbm').textContent=idbms.length;$('nLane').textContent=new Set(idbms.filter(d=>d.laneId).map(d=>d.laneId)).size;
+    { const t=bomTakeoff(); const ni=$('nIdbm'); ni.textContent=t.total; ni.title=t.floor+' floor + '+t.rack+' rack + '+t.veh+' on vehicles = '+t.total+' IDBMs';   // count now INCLUDES vehicle-bed IDBMs
+      const bp=$('bomPanel'); if(bp&&bp.style.display==='block')renderBOM(); }
+    $('nLane').textContent=new Set(idbms.filter(d=>d.laneId).map(d=>d.laneId)).size;
     $('nSel').textContent=sel.size;$('aZ').textContent=activeZ;
     // level chips
     const zs=[...new Set(idbms.map(d=>d.z))].sort((a,b)=>a-b);if(!zs.includes(activeZ))zs.push(activeZ);zs.sort((a,b)=>a-b);
