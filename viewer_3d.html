@@ -557,6 +557,7 @@
     // pack two-per-bay and (with the formLane bay guard) never straddle an upright. Demo facility (no racks) keeps its tuning.
     if(rackRuns3D&&rackRuns3D.length){ const R=rackRuns3D[0], aN=R.acrossN||8, ppb=Math.max(1,Math.floor((R.beamLen||2438)/1165)), tgt=Math.max(3,Math.round(aN/ppb));
       const sb=Math.max(0,Math.floor((tgt*300-1165)/2)-2); TZP.sideBuffer=sb;   // clsOf(1165) → tgt IDBMs
+      try{ cmSync({sideBuffer:sb}); }catch(e){}   // PERSIST into tz-commission so the 1 Hz commissioning bridge re-applies sb (not the old 100) — otherwise seed=cls4 but arrivals=cls5 and the infeed jams
     }
     // --- topology v3: short ground rows = entrance/exit conveyors; each level's two 100-column blocks become
     //     FIELDS (free column pools) — no static lanes; the registry forms them on demand. ---
@@ -614,9 +615,12 @@
         const np={id:++eNid,lead:(eLane.exit-EGAP)-i*EPITCH,row:0,fo:ident.fo,foLabel:ident.label,mfg:mfg}; eWorld.push(np); loads.push(mkLoad(np,ident)); }
       ePhase='PARK'; saveCtx(c); return n; };
     let s1=0,s2=0,li=0; const STD=clsOf(1165);   // standard-pallet class follows the side-gap setting (rack layouts → 4 IDBMs; demo → 5)
-    if(!bare)flow.fields.forEach(f=>{ for(let k=0;k<13;k++){
-      if(f.arr===1){ const c=formLane(f,STD,null); if(c)s1+=seed(c,7+Math.floor(Math.random()*4)); }
-      else { const cat=CATS5[(li++)%CATS5.length], c=formLane(f,STD,cat); if(c)s2+=seed(c,(k%13)<8?11:0,cat); } } });
+    if(!bare)flow.fields.forEach(f=>{
+      const nSeed=Math.max(1,Math.min(13,Math.floor(f.cols.length*0.6/STD)));   // seed only ~60% of the field's columns — leave the rest FREE for incoming arrivals (fields vary: demo 100-col, rack 40-col; a hardcoded 13 jammed the small rack fields)
+      const a2Fill=Math.ceil(nSeed*0.6);
+      for(let k=0;k<nSeed;k++){
+        if(f.arr===1){ const c=formLane(f,STD,null); if(c)s1+=seed(c,7+Math.floor(Math.random()*4)); }
+        else { const cat=CATS5[(li++)%CATS5.length], c=formLane(f,STD,cat); if(c)s2+=seed(c,k<a2Fill?11:0,cat); } } });
     brainState={log:[],stats:flow.stats}; brainOn=true;
     brainLog('🚩 FLOW BOUND — '+flowBindNote,'plan');
     brainLog('DYNAMIC LANES online — '+flow.fields.length+' fields · seeded '+(flow.stats.formed)+' standard (5-IDBM) lanes: A1 '+s1+' · A2 '+s2+' pallets · side buffer '+TZP.sideBuffer+' mm · gap '+EGAP+' mm','plan');
@@ -2241,6 +2245,12 @@
     onSpeed:function(){}                                                                    // stepEngine reads TZ_UI.speed directly
   };
   window.__estep=(n)=>{n=n||1;for(var i=0;i<n;i++){eStepAll(0.05);}render();return {ctxs:eCtxs.length,renderLoads:renderLoads.length,renderShuttles:renderShuttles.length};};
+  window.__diag=()=>{ if(!flow)return 'no flow'; const F=flow, en=F.entr;
+    const freeCols=f=>f.used.reduce((s,u)=>s+(u?0:1),0);
+    const enFront=en&&en.loads&&en.loads.length?en.loads.map(l=>({cls:clsOf((l.identity&&l.identity.wid)||1165),wid:(l.identity&&l.identity.wid)||1165,lead:Math.round(l._ep?l._ep.lead:-1)})):[];
+    return { arrived:F.stats.arrived, waiting:F.stats.waiting, spawnT:Math.round(F.spawnT*100)/100, entrAccept:fCanAccept(en), entrLoads:en.eWorld.length, entrFront:enFront.slice(0,3),
+      a1free:F.fields.filter(f=>f.arr===1).map(freeCols), a2free:F.fields.filter(f=>f.arr===2).map(freeCols),
+      cars:F.cars.map(c=>({i:c.i,isCrane:c.isCrane,state:c.state,label:c.label,lds:c.lds.length,mode:c.mode})) }; };
   /* boot — a Configurator hand-off (tz-layout, sticky) outranks the built-in layout */
   let bootData=window.IDBM_DATA, bootFrom='built-in';
   try{ const tl=JSON.parse(localStorage.getItem('tz-layout')||'null');
