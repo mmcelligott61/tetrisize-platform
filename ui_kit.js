@@ -16,7 +16,7 @@
   const LSset = (k,v) => { try { localStorage.setItem(k,v); } catch(e){} };
 
   const UI = window.TZ_UI = {
-    speed: +(LS('tz-speed')||10),
+    speed: +(LS('tz-speed')||1),   // DEFAULT 1× = real time (belt 18 m/min, car 1 m/s). The slider is the user's explicit time-lapse control; we never silently fast-forward.
     theme: LS('tz-theme')||'day',
     layers: { products:'visible', idbms:'visible', vehicles:'visible', structure:'visible' },
     floor: { surface: 'grid', color: LS('tz-floor-color')||'concrete' },   // every boot opens in GRID survey mode (colour is remembered; surface is per-session)

@@ -67,8 +67,8 @@
     <button class="ui" id="flyBtn" title="Cinematic facility tour — entrance, arrays, sorter corridor, exit dock; drag to take over">🎬 Fly-through</button>
     <button class="ui" id="recBtn" title="Record the 3D scene to a .webm video (downloads on stop)">⏺ Record</button>
     <button class="ui" id="loadBtn">Load JSON…</button>
-    <button class="ui" id="playBtn">▶ Play</button>
-    <button class="ui" id="flowBtn" title="Generate pallet flow — convey pallets lengthwise along your belts to sanity-check a Configurator design (toggle off = static snapshot)">▶ Test Flow</button>
+    <button class="ui" id="playBtn" title="Single-click: play/pause the vehicle animation · Double-click: run product flow (empty → fills → loops, using the Products dropdown)">▶ Play</button>
+    <select class="ui" id="flowDataSel" title="Which sample products flow through on a double-click of Play (needs Entry/Exit set in the Configurator)" style="padding:6px 6px;font-size:11px"><option value="rich">Products: Sample catalogue</option><option value="100">Products: My 100-item file</option><option value="1000">Products: My 1000-item file</option><option value="none">Products: Generic pallets</option></select>
     <button class="ui" id="perspBtn">Perspective</button>
     <input id="file" type="file" accept="application/json,.json" style="display:none">
   </div>
@@ -468,7 +468,7 @@
   function ePostStep(){ if(eMode==='flow')return ePostFlow();
     if(ePhase==='DONE'){ eDoneT++; if(eDoneT>300) setupEngineLane(); return; }
     if(eMode==='hybrid')return ePostHybrid(); if(eMode==='pfill')return ePostPfill(); if(eMode==='dischargeA')return ePostDischargeA(); if(eMode==='dischargeB')return ePostDischargeB(); return ePostRA(); }
-  function stepEngine(dt){ if(!eLane)return; const SIM=(window.TZ_UI&&TZ_UI.speed)||10, steps=Math.max(1,Math.round(dt/0.05*SIM)); E.setDt(0.05);   // ONE clock: the SPEED slider is the time multiplier for every mode (1× = real line speed, belts 18 m/min)
+  function stepEngine(dt){ if(!eLane)return; const SIM=(window.TZ_UI&&TZ_UI.speed)||1, want=dt*SIM, steps=Math.max(1,Math.ceil(want/0.05)), sdt=want/steps; E.setDt(sdt);   // ONE clock: advance EXACTLY dt×SIM engine-seconds (sub-stepped ≤0.05 s for stability). 1× = real line speed (belt 300 mm/s = 18 m/min); belts and cars now share the identical multiplier.
     for(let k=0;k<steps;k++){ if(ePhase==='DONE'){ ePostStep(); break; } eCmd=eController(); E.step(eWorld,eCmd,{exit:eLane.exit-EGAP}); ePostStep(); eTick++; } }
   function syncBedLoads(){ if(eMode!=='dischargeB'&&eMode!=='brain')return; const cax=-eLane.uy, cay=eLane.ux; eShB.bed.forEach(ld=>{ if(!ld._bed)return; const a=ld._bed.a, off=eShB.shuttleY+ld._bed.c;
     ld.x=ld.cx=eLane.sx+eLane.ux*a+cax*off; ld.y=ld.cy=eLane.sy+eLane.uy*a+cay*off; ld.cz=eLane.beltZ; ld.ang=eLane.h; });   // OUT-car bed loads: along=[ux,uy]·a, across=[-uy,ux]·(shuttleY+c)
@@ -498,7 +498,12 @@
   //       (Mike: the learning baseline — measure voids, iterate). =====
   const clsOf=w=>Math.max(3,Math.ceil(((w||1165)+2*TZP.sideBuffer)/300));
   function formLane(field,cls,cat,wantRun,atC0){
-    const fits=(i,w)=>{ if(i<0||i+w>field.cols.length)return false; for(let j=0;j<w;j++)if(field.used[i+j])return false; return true; };
+    if(field._pitch==null){ let mn=1e9; for(let k=1;k<field.cols.length;k++)mn=Math.min(mn,field.cols[k]-field.cols[k-1]); field._pitch=(mn<1e9?mn:300); }   // the field's nominal IDBM pitch (smallest column gap)
+    const bayMax=field._pitch*1.2;   // a gap wider than this is a RACK-BAY BOUNDARY (an upright sits in it) — a lane may not span it. (bay gap ≈ pitch+upright ≈ 1.38×; within-bay = 1.0× → 1.2 separates them)
+    const fits=(i,w)=>{ if(i<0||i+w>field.cols.length)return false;
+      for(let j=0;j<w;j++)if(field.used[i+j])return false;
+      for(let j=1;j<w;j++)if(field.cols[i+j]-field.cols[i+j-1]>bayMax)return false;   // never straddle an upright: the lane's columns must all sit within ONE bay
+      return true; };
     let c0=-1;
     if(atC0!=null){ if(fits(atC0,cls))c0=atC0; else return null; }                               // SIBLING placement: the exact adjacent slot or nothing (caller falls back)
     if(c0<0&&wantRun){ for(let i=0;i+wantRun<=field.cols.length;i++)if(fits(i,wantRun)){c0=i;break;} }   // PREDICTIVE: claim the head of a run wide enough for the whole predicted lot's lanes
@@ -547,13 +552,26 @@
     for(const f of F.fields){ if(f.arr!==arr)continue; const nc=formLane(f,cls,cat); if(nc)return nc; }
     return null; }
   function initFlow(bare){
+    // RACK-BAY FIT: when the layout is mounted on pallet racking, size the side gap so a standard pallet occupies exactly
+    // one bay's share of IDBMs (acrossN ÷ pallets-per-bay) — e.g. an 8-IDBM bay holds 2 pallets → 4 IDBMs each. Then lanes
+    // pack two-per-bay and (with the formLane bay guard) never straddle an upright. Demo facility (no racks) keeps its tuning.
+    if(rackRuns3D&&rackRuns3D.length){ const R=rackRuns3D[0], aN=R.acrossN||8, ppb=Math.max(1,Math.floor((R.beamLen||2438)/1165)), tgt=Math.max(3,Math.round(aN/ppb));
+      const sb=Math.max(0,Math.floor((tgt*300-1165)/2)-2); TZP.sideBuffer=sb;   // clsOf(1165) → tgt IDBMs
+    }
     // --- topology v3: short ground rows = entrance/exit conveyors; each level's two 100-column blocks become
     //     FIELDS (free column pools) — no static lanes; the registry forms them on demand. ---
     const rowMap={}; idbms.forEach(g=>{ const k=Math.round(g.cz*1000)+'|'+Math.round((g.cy-g.L/2)*100)+'_'+Math.round((g.cy+g.L/2)*100); (rowMap[k]=rowMap[k]||[]).push(g); });
     const rlist=Object.values(rowMap).map(r=>({gs:r,z:Math.round(r[0].cz*1000),y0:r[0].cy-r[0].L/2,y1:r[0].cy+r[0].L/2,n:r.length}));
     const zs=[...new Set(rlist.map(r=>r.z))].sort((a,b)=>a-b), ground=zs[0], beltZof=z=>(z+200)/1000;
     const grnd=rlist.filter(r=>r.z===ground).sort((a,b)=>b.y1-a.y1);
-    const entrRow=grnd.find(r=>r.n<50), exitRow=grnd.slice().reverse().find(r=>r.n<50);
+    // Entrance/exit = short ground conveyor rows. BIND them to the Configurator Entry/Exit flags (flowPoints) when present —
+    // the flag chooses WHICH conveyor is the entrance/exit; only fall back to the top/bottom heuristic when no flag is set.
+    const cand=grnd.filter(r=>r.n<50), rowCtr=r=>[r.gs.reduce((s,g)=>s+g.cx,0)/r.n,(r.y0+r.y1)/2];
+    const nearestRow=pt=>cand.reduce((b,r)=>{ const c=rowCtr(r),d=Math.hypot(c[0]-pt[0],c[1]-pt[1]); return (b&&b.d<=d)?b:{r:r,d:d}; },null);
+    let entrRow=(flowEntryV&&cand.length)?(nearestRow(flowEntryV)||{}).r:grnd.find(r=>r.n<50);
+    let exitRow =(flowExitV &&cand.length)?(nearestRow(flowExitV) ||{}).r:grnd.slice().reverse().find(r=>r.n<50);
+    if(entrRow&&entrRow===exitRow){ exitRow=grnd.slice().reverse().find(r=>r.n<50&&r!==entrRow)||exitRow; }   // never collapse entrance and exit onto one conveyor
+    const flowBindNote='entrance '+(flowEntryV?'@ Configurator flag':'(inferred)')+' · exit '+(flowExitV?'@ flag':'(inferred)');
     const entrX=entrRow.gs.reduce((s,g)=>s+g.cx,0)/entrRow.n, exitX=exitRow.gs.reduce((s,g)=>s+g.cx,0)/exitRow.n;
     const CATS5=ECATS.map(c=>c.k);
     const entr=mkFlowCtx(flowLaneDesc(entrX,entrRow.y1,entrRow.y0,beltZof(ground)),'ENTRANCE');
@@ -595,15 +613,25 @@
         mfg=Date.now()-(3+Math.random()*27)*86400000, ident={cat:k,fo:'FO-'+flow.foN,label:'FO-'+(flow.foN++),mfg:mfg};
         const np={id:++eNid,lead:(eLane.exit-EGAP)-i*EPITCH,row:0,fo:ident.fo,foLabel:ident.label,mfg:mfg}; eWorld.push(np); loads.push(mkLoad(np,ident)); }
       ePhase='PARK'; saveCtx(c); return n; };
-    let s1=0,s2=0,li=0;
+    let s1=0,s2=0,li=0; const STD=clsOf(1165);   // standard-pallet class follows the side-gap setting (rack layouts → 4 IDBMs; demo → 5)
     if(!bare)flow.fields.forEach(f=>{ for(let k=0;k<13;k++){
-      if(f.arr===1){ const c=formLane(f,5,null); if(c)s1+=seed(c,7+Math.floor(Math.random()*4)); }
-      else { const cat=CATS5[(li++)%CATS5.length], c=formLane(f,5,cat); if(c)s2+=seed(c,(k%13)<8?11:0,cat); } } });
+      if(f.arr===1){ const c=formLane(f,STD,null); if(c)s1+=seed(c,7+Math.floor(Math.random()*4)); }
+      else { const cat=CATS5[(li++)%CATS5.length], c=formLane(f,STD,cat); if(c)s2+=seed(c,(k%13)<8?11:0,cat); } } });
     brainState={log:[],stats:flow.stats}; brainOn=true;
+    brainLog('🚩 FLOW BOUND — '+flowBindNote,'plan');
     brainLog('DYNAMIC LANES online — '+flow.fields.length+' fields · seeded '+(flow.stats.formed)+' standard (5-IDBM) lanes: A1 '+s1+' · A2 '+s2+' pallets · side buffer '+TZP.sideBuffer+' mm · gap '+EGAP+' mm','plan');
     brainLog('Lanes now FORM per product width (N = ceil((w+2×buffer)/300)) and DISSOLVE when empty — strict classing, no exceptions','plan');
     const pn=document.getElementById('brain'); if(pn)pn.style.display='block';
   }
+  // Run the REAL IDBM flow engine on a custom Configurator layout: forms class-locked lanes per product width,
+  // uses the layout's cranes/shuttles as belt-to-belt transfer cars, conveys everything on-deck. Same engine as the demo facility.
+  function startRealFlow(){ if(conceptOn)stopConcept();
+    const cars=vehicles.filter(v=>v.type==='shuttle'||v.type==='crane');
+    if(!cars.length)return null;                                                 // no transfer cars → caller falls back to directed flow
+    idbms.forEach(g=>g._active=false); eCtxs=[]; initFlow(false); autoFlow=true;
+    playing=true; lastT=0; const pb=document.getElementById('playBtn'); if(pb)pb.textContent='⏸ Pause'; requestAnimationFrame(animate);
+    return flow.fields.length+' storage fields · '+cars.length+' transfer car(s) · lanes form per product width (strict classing)'; }
+  window.__runFlow=function(){ const m=startRealFlow(); return m||'no transfer cars in this layout'; };
   function fSpace(c){ let used=0,n=0; c.eWorld.forEach(p=>{ used+=(p.len||EP); n++; }); return (c.eLane.exit-EGAP)-used-EGAP*Math.max(0,n-1); }   // free belt length (true footprints)
   function fOcc(arr){ let used=0,cap=0; arr.forEach(c=>{ const span=c.eLane.exit-EGAP; cap+=span; used+=span-fSpace(c); }); return cap?used/cap:0; }   // SPACE-based occupancy
   function fRoom(c,need){ return c.eLane.N===1 ? !c.eWorld.length : fSpace(c)>=((need||1)*(EP+EGAP)+EPITCH); }   // room for `need` standard footprints + one slot of meet headroom (conservative for smaller items)
@@ -965,7 +993,7 @@
       if(!car.lds.length){ brainLog('CAR-3: FULL-BED discharge — every bed lane onto its own exit lane, ONE docking','retr'); car.mode='collect'; car.state='idle'; car.lastDest=null; car.megaT=0; }
       return; }
   }
-  function flowTick(dt){ if(!brainOn||!flow)return; const F=flow, step=dt*((window.TZ_UI&&TZ_UI.speed)||10);   // engine-seconds this frame — the SPEED slider is the single time multiplier (1× = real)
+  function flowTick(dt){ if(!brainOn||!flow)return; const F=flow, step=dt*((window.TZ_UI&&TZ_UI.speed)||1);   // engine-seconds this frame — the SPEED slider is the single time multiplier (1× = real)
     if(!F.car2on && fOcc(F.a1)>=TZP.latch2){ F.car2on=true; brainLog('ARRAY 1 ≥ '+Math.round(TZP.latch2*100)+'% — CAR-2 (sorter) ONLINE','plan'); }       // capacity-driven activation (commissioning-adjustable)
     if(!F.car3on && fOcc(F.a2)>=TZP.latch3){ F.car3on=true; brainLog('ARRAY 2 ≥ '+Math.round(TZP.latch3*100)+'% — CAR-3 (shipping) ONLINE','plan'); }
     tzBridge(step);                                                                          // localStorage bridge: live snapshot OUT · commissioning + commands IN
@@ -1366,7 +1394,7 @@
       const colYs=[]; for(let k=0;k<=bays;k++) colYs.push(k*pitch+cw/2);
       const beamTopOff=zoff+(E_TOP-0.085);                                                                                 // beam TOP = 85 mm below the IDBM top surface (cz+E_TOP) → the body bottom it rests on
       const topBeam=(levels-1)*lp+beamTopOff, top=topBeam+0.45;
-      lineXs.forEach(bx=> colYs.forEach(cy=>{ const w=T(bx,cy); out.push({kind:'col',k:[w[0],w[1],top*0.5], box:[w[0],w[1],0,top,ax,ay,cH,cH,BLUE]}); }) );   // UPRIGHTS — floor → top
+      lineXs.forEach(bx=> colYs.forEach(cy=>{ const w=T(bx,cy); out.push({kind:'col',k:[w[0],w[1],top*0.5], box:[w[0],w[1],0,top,ax,ay,cH,cH,BLUE]}); }) );   // UPRIGHTS — floor → top (true structural members: ALL bay frames present)
       for(let lv=0;lv<levels;lv++){ const zt=lv*lp+beamTopOff, zb=Math.max(0,zt-beamH);                                     // BEAMS along local +Y — top defined by the IDBM top surface
         for(let b=0;b<bays;b++){ const yc=b*pitch+cw+beamLen/2;
           lineXs.forEach(bx=>{ const w=T(bx,yc); out.push({kind:'beam',k:[w[0],w[1],zt], box:[w[0],w[1],zb,zt,ay,ax,beamLen/2,beamThk/2,ORANGE]}); }); } }
@@ -1556,17 +1584,25 @@
   function animate(now){if(!playing)return;const dt=Math.min((now-(lastT||now))/1000,0.05);lastT=now;lastRaf=now;animClock+=dt;flyTick(dt);
     vehicles.forEach(v=>{
       if(v.type==='agv'&&v.track&&v.track.length){followTrack(v,dt);return;}   // AGV drives its planned circuit
-      if(v.type==='crane'){const cH=(v._liftLo!=null?v._liftLo:0),mD=(v._liftHi!=null?v._liftHi:6000);v.kinematicState={liftZ:cH+(mD-cH)*(0.5-0.5*Math.cos(animClock*(v._liftFreq||0.12)+(v._liftPhase||0)))};}   // hoist floor-delivery ↔ top-delivery (nested bed, belt-to-belt both ends), own phase
+      if(v.type==='crane'&&!v._flow){const cH=(v._liftLo!=null?v._liftLo:0),mD=(v._liftHi!=null?v._liftHi:6000);v.kinematicState={liftZ:cH+(mD-cH)*(0.5-0.5*Math.cos(animClock*(v._liftFreq||0.12)+(v._liftPhase||0)))};}   // demo hoist oscillation — flow cars are driven by the conductor instead
       if(!v._flow&&v._home&&v._ax){const ph=Math.sin(animClock*(v._freq||0.18)+(v._phase||0))*(v._dir||1);v.pose.position[0]=v._home[0]+v._ax[0]*v._amp*ph;v.pose.position[1]=v._home[1]+v._ax[1]*v._amp*ph;}});   // demo oscillation — flow cars are driven by the conductor instead
     eStepAll(dt);
     render();requestAnimationFrame(animate);}
-  {const pb=document.getElementById('playBtn');if(pb)pb.onclick=()=>{playing=!playing;pb.textContent=playing?'⏸ Pause':'▶ Play';if(playing){lastT=0;requestAnimationFrame(animate);}else render();};}
+  { const pb=document.getElementById('playBtn'); let _ct=null;
+    const single=()=>{ if(conceptOn){ stopConcept(); playing=true; pb.textContent='⏸ Pause'; lastT=0; requestAnimationFrame(animate); return; }   // flowing → single click drops products, keeps vehicles animating
+      playing=!playing; pb.textContent=playing?'⏸ Pause':'▶ Play'; if(playing){lastT=0;requestAnimationFrame(animate);} else render(); };               // toggle the VEHICLE animation
+    const dbl=()=>{ if(conceptOn)stopConcept();
+      if(vehicles.some(v=>v.type==='shuttle'||v.type==='crane')){ const m=startRealFlow(); if(m){ pb.textContent='⏸ Pause'; brainLog('▶▶ LIVE FLOW — '+m,'plan'); return; } }   // layout has transfer cars → run the REAL IDBM engine (strict lane classing, belt-to-belt, cranes as cars)
+      const m=window.__flow(true); pb.textContent='⏸ Pause'; brainLog('▶▶ DIRECTED FLOW — '+m,'plan'); };   // no cars → fall back to directed flow along the IDBM lanes
+    if(pb){ pb.title='Single-click: play/pause the vehicle animation · Double-click: run product flow (empty → fills → loops, using the Products dropdown)';
+      pb.onclick=()=>{ if(autoFlow){ single(); return; } if(_ct)return; _ct=setTimeout(()=>{ _ct=null; single(); }, 240); };
+      pb.ondblclick=()=>{ if(autoFlow)return; if(_ct){clearTimeout(_ct);_ct=null;} dbl(); }; } }
   // watchdog: if requestAnimationFrame is throttled (preview backgrounded/unfocused), keep the engine progressing so the demo is always watchable
   function eStepAll(dt){ flowTick(dt);   // the flow conductor: arrivals, the 3 cars, every hand-off, shipping…
     eCtxs.forEach((c,i)=>{ if(c.fault)return;                                                  // a FAULTED lane's zone is dead — the belt does not move, contents stranded in place
       loadCtx(c); eCtxI=i; if(eLane){ stepEngine(dt); syncEngineLoads(); c.shuttles=eShuttleDefs().map(s=>{s._ctx=i;return s;}); } saveCtx(c); });   // …then EVERY pallet car's lane advances
     renderLoads=staticLoads.concat([].concat(...eCtxs.map(c=>c.loads||[]))); renderShuttles=[].concat(...eCtxs.map(c=>c.shuttles||[]));
-    if(conceptOn)stepConcept(dt); }                                                              // CONCEPT FLOW (custom-layout diagnostic) overrides renderLoads with lengthwise-conveyed pallets
+    if(conceptOn)stepConcept(dt); }                                                              // CONCEPT FLOW (diagnostic) overrides renderLoads with lengthwise-conveyed pallets (ASRS handled at the top)
   setInterval(function(){ if(!playing||(!eCtxs.length&&!conceptOn))return; const t=(window.performance&&performance.now)?performance.now():+new Date(); if(t-lastRaf>200){ const dt=Math.min((t-(lastT||t))/1000,0.05); lastT=t; animClock+=dt; eStepAll(dt); render(); } }, 100);   // also keep CONCEPT/DIRECTED flow stepping when rAF is throttled (custom layouts have no eCtxs)
   function setMode(p){cam.persp=p;cam.panX=cam.panY=0;if(p){fitView();}else if(meta.instances)loadData(meta);render();}   // entering perspective fits immediately (fit() is mode-aware)
   {const qb=document.getElementById('perspBtn');if(qb)qb.onclick=()=>{setMode(!cam.persp);qb.textContent=cam.persp?'Orthographic':'Perspective';};}
@@ -1794,7 +1830,7 @@
       actions:(spec.actions||[]).slice().sort((a,b)=>a.at-b.at), ai:0, prev:null, nextOrder:spec.orderEvery?(spec.orderEvery):null,
       atStart:{latch2:TZP.latch2,latch3:TZP.latch3,spawnSec:TZP.spawnSec,gap:E.GAP,strategy:F.strategy} };   // spec recorded AT START — what the run actually ran with
     const baseB=F.cars.map(c=>c.hrsBusy||0), base={...F.stats};
-    TZ_UI.speed=50;
+    const _spd0=(window.TZ_UI&&TZ_UI.speed)||1; TZ_UI.speed=50;   // benchmark fast-forwards; the user's speed is restored in finish() so we never leave the engine silently at 50×
     const ov=benchOv(R.label); let stop=false; ov.onCancel=()=>{ stop=true; };
     let nextS=R.t0+60, peak=0;
     const doAct=a=>{ if(a.gate)window.__gate(a.gate); if(a.fault)window.__fault(a.fault.kind,a.fault.id);
@@ -1823,6 +1859,8 @@
         all.unshift({label:R.label,savedAt:Date.now(),spec:Object.assign({duration:dur,dataset:R.spec.dataset||null,preset:R.spec.preset||null},R.atStart),summary:sum,samples:ds});
         while(all.length>10)all.pop(); localStorage.setItem('tz-bench',JSON.stringify(all)); }catch(e){}
       F.benchR=null; ov.close();
+      TZ_UI.speed=_spd0; const sv=document.getElementById('tzSpeedVal'), sl=document.getElementById('tzSpeed');   // restore the user's speed + re-sync the slider display (no silent 50× left behind)
+      if(sv)sv.innerHTML=_spd0+'&times;'; if(sl){ const idx=[1,2,5,10,25,50].indexOf(_spd0); if(idx>=0)sl.value=idx; }
       brainLog('📊 BENCH '+(cancelled?'CANCELLED':'complete')+': "'+R.label+'" — in '+sum.inHr+'/h · out '+sum.outHr+'/h · dwell '+(sum.dwellMean||'—')+'s (p95 '+(sum.dwellP95||'—')+') · peak '+sum.peakOcc+'%','plan'); };
     const tick=()=>{ if(stop){ finish(true); return; } if(!flow||flow.benchR!==R){ ov.close(); return; }
       while(R.ai<R.actions.length&&(F.clock-R.t0)>=R.actions[R.ai].at)doAct(R.actions[R.ai++]);
@@ -2142,15 +2180,16 @@
     brainLog('▦ SEGREGATE by '+facet+' — '+out.length+' groups ('+total+' pallets) each in its own near-exit lane block: '+out.join(' · '),'plan');
     return 'SEGREGATED by '+facet+' · '+out.length+' groups / '+total+' pallets · audit '+window.__audit().violations.length+' ✓'; };
   // Phase 21 — INDUSTRY SCENARIO PRESETS: a preset foregrounds the right Lens facets + offers the industry's signature optimisation.
+  // fill = the steady-state rack occupancy this business model wants the ASRS to hold (drives the store-cycle target)
   var SCENARIOS={
-    manufacturer:{label:'Manufacturer', facets:['destination','product','priority','class'], group:'destination', action:['segregate','destination'], blurb:'demand-pull by machine · affinity grouping near the consuming line'},
-    tpl:{label:'3PL', facets:['client','dwell','product','rule'], group:'client', action:['segregate','client'], blurb:'client segregation (keep-apart) · dwell-age for storage billing'},
-    dc:{label:'Retail DC', facets:['velocity','destination','product','class'], group:'velocity', action:['segregate','velocity'], blurb:'ABC velocity slotting · store / route / door waves'},
-    coldchain:{label:'Cold-chain', facets:['rule','product','dwell','destination'], group:'temperature', action:['cold'], blurb:'temperature compliance · cold rooms · FEFO'},
-    ecomm:{label:'E-comm', facets:['priority','velocity','dwell','product'], group:'velocity', action:['segregate','velocity'], blurb:'priority SLA · velocity · high order cadence'} };
+    manufacturer:{label:'Manufacturer', fill:0.55, facets:['destination','product','priority','class'], group:'destination', action:['segregate','destination'], blurb:'demand-pull by machine · in/out with idle · buffer ~55%'},
+    tpl:{label:'3PL', fill:1.00, facets:['client','dwell','product','rule'], group:'client', action:['segregate','client'], blurb:'fill & hold · racks sold by the slot · client segregation'},
+    dc:{label:'Retail DC', fill:0.45, facets:['velocity','destination','product','class'], group:'velocity', action:['segregate','velocity'], blurb:'cross-dock churn · low standing stock · velocity waves'},
+    coldchain:{label:'Cold-chain', fill:0.97, facets:['rule','product','dwell','destination'], group:'temperature', action:['cold'], blurb:'fill & hold · a full freezer earns · FEFO compliance'},
+    ecomm:{label:'E-comm', fill:0.82, facets:['priority','velocity','dwell','product'], group:'velocity', action:['segregate','velocity'], blurb:'mostly full · good buffer capacity · high pick cadence'} };
   window.__scenario=function(name){ if(!flow)return 'no flow'; const s=SCENARIOS[name]; if(!s)return 'scenarios: '+Object.keys(SCENARIOS).join(', ');
-    flow.scenario={name:name, label:s.label, facets:s.facets, group:s.group, action:s.action, blurb:s.blurb};
-    brainLog('🏭 SCENARIO: '+s.label+' — grouping by '+s.group+' · '+s.blurb,'plan');
+    flow.scenario={name:name, label:s.label, fill:s.fill, facets:s.facets, group:s.group, action:s.action, blurb:s.blurb};
+    brainLog('🏭 SCENARIO: '+s.label+' — grouping by '+s.group+' · standing stock ~'+Math.round((s.fill||1)*100)+'% · '+s.blurb,'plan');
     if(window.__scenarioUI)window.__scenarioUI(); render(); return 'scenario '+s.label+' · facets foregrounded: '+s.facets.join(' › ')+' · signature action: '+s.action.join(' '); };
   window.__scenarioRun=function(){ if(!flow||!flow.scenario)return 'pick a scenario first'; const a=flow.scenario.action;
     if(a[0]==='segregate')return window.__segregate(a[1]); if(a[0]==='cold'){ window.__coldRoom(); let m=window.__climate(); let g=0; while(m.indexOf('sensed')<0&&g++<5)m=window.__climate(); return window.__stageCold(); } return 'no action'; };
@@ -2240,7 +2279,7 @@
     if(flowEntryV&&flowExitV){                                                                    // DIRECTED FLOW: products enter at Entry, convey to Exit, leave
       conceptLanes.forEach(ln=>{ const toExit=(flowExitV[0]-flowEntryV[0])*ln.ux+(flowExitV[1]-flowEntryV[1])*ln.uy;
         if(toExit<0){ ln.sx+=ln.ux*ln.len; ln.sy+=ln.uy*ln.len; ln.ux=-ln.ux; ln.uy=-ln.uy; } });               // orient every lane toward the Exit
-      directedPallets=[]; flowThru=0; conceptOn='directed'; if(!directedData)window.__flowData('rich');           // default to the synthetic catalogue so products look real; switch with __flowData('100'/'1000')
+      directedPallets=[]; flowThru=0; conceptOn='directed'; { const ds=document.getElementById('flowDataSel'), want=ds?ds.value:'rich'; if(want!=='none'&&(!directedData))window.__flowData(want); }   // products come from the dropdown selection (sample catalogue by default)
       _thruBox(true);
       if(!playing){ playing=true; lastT=0; const pb=document.getElementById('playBtn'); if(pb)pb.textContent='⏸ Pause'; requestAnimationFrame(animate); }
       return conceptLanes.length+' lanes · Entry→Exit'+(directedData?(' · '+directedData.items.length+' linked products'):' · linking product data…'); }
@@ -2250,7 +2289,7 @@
     return conceptPallets.length+' pallets looping — set Entry/Exit in the Configurator for directed flow'; }
   function stopConcept(){ conceptOn=false; conceptPallets=null; directedPallets=null; renderLoads=[]; playing=false; _thruBox(false);
     const pb=document.getElementById('playBtn'); if(pb)pb.textContent='▶ Play'; render(); }
-  function stepConcept(dt){ if(!conceptOn||!conceptLanes)return; const speed=((window.TZ_UI&&TZ_UI.speed)||10), SP=1.4*speed*dt, out=[];
+  function stepConcept(dt){ if(!conceptOn||!conceptLanes)return; const speed=((window.TZ_UI&&TZ_UI.speed)||1), SP=1.4*speed*dt, out=[];
     if(conceptOn==='directed'){ const PITCH=2.2;
       conceptLanes.forEach(ln=>{ if(!directedPallets.some(p=>p.lane===ln && p.d<PITCH))directedPallets.push({lane:ln,d:0,item:_nextItem()}); });   // spawn at the Entry end when its slot is clear
       directedPallets=directedPallets.filter(p=>{ p.d+=SP; if(p.d>=p.lane.len){ flowThru++; return false; }                                       // reached Exit → removed + counted
@@ -2264,8 +2303,7 @@
     if(on===false||(on==null&&conceptOn)){ stopConcept(); return 'flow OFF — static snapshot'; }
     return 'flow ON — '+startConcept(); };
   window.__flowStats=function(){ return {mode:conceptOn||'off', throughput:flowThru, lanes:conceptLanes?conceptLanes.length:0, dataLinked:directedData?directedData.items.length:0, entry:!!flowEntryV, exit:!!flowExitV}; };
-  { const fb=document.getElementById('flowBtn'); if(fb)fb.onclick=()=>{ const msg=window.__flow();
-      fb.classList.toggle('on',!!conceptOn); fb.textContent=conceptOn?'⏸ Stop Flow':'▶ Test Flow'; brainLog('🧪 '+msg,'plan'); }; }
+  { const ds=document.getElementById('flowDataSel'); if(ds)ds.onchange=()=>{ const m=window.__flowData(ds.value); brainLog('🔗 '+m,'plan'); }; }   // switch the sample products live (Play double-click runs them)
   window.__layoutReset=function(){ localStorage.removeItem('tz-layout'); return 'tz-layout cleared — reload for the built-in layout'; };
   if(bootData){ try{ loadData(bootData); }catch(err){ window.__bootErr=err.message+'\n'+(err.stack||'').split('\n')[1];
       const b=document.getElementById('boot'); b.style.display='flex'; b.innerHTML='<div>Layout failed to load: '+err.message+'</div>'; }
